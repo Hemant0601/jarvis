@@ -73,7 +73,7 @@ Hybrid graph RAG: embed the query, find top-k nearest chunks, expand owning node
 - Kotlin 2.0, Gradle 8.9, AGP 8.5.
 - Compose (Material 3), Navigation-Compose, Hilt, KSP.
 - Room 2.6 + SQLCipher 4.6.
-- MediaPipe Tasks GenAI (Gemma 3 1B/4B INT4).
+- MediaPipe Tasks GenAI 0.10.21 (default model: Gemma 4 E2B, Apr 2026 Apache-2.0).
 - ONNX Runtime Mobile for embeddings.
 - whisper.cpp via `whisper-jni`.
 - OkHttp + Retrofit + Moshi for OpenRouter.
@@ -86,7 +86,7 @@ Hybrid graph RAG: embed the query, find top-k nearest chunks, expand owning node
 2. `cp local.properties.sample local.properties` and fill in `sdk.dir`. Optional: `OPENROUTER_API_KEY`, `GOOGLE_WEB_CLIENT_ID`.
 3. Generate the Gradle wrapper: `gradle wrapper --gradle-version 8.9` (the binary `gradle-wrapper.jar` isn't committed — Android Studio can also do this during project sync).
 4. Open in Android Studio and sync. First sync will fetch MediaPipe, ONNX and whisper-jni.
-5. Run on an Android 13+ device. Open **Settings** to download Gemma, Whisper, and embedding models (or skip Gemma and use OpenRouter).
+5. Run on an Android 13+ device. The app works immediately with a hashing-based embedder and a grounded-from-memory fallback responder — no downloads required. Open **Settings** to download Gemma 4 E2B (~2 GB) for on-device reasoning, Whisper for voice notes, or set an OpenRouter key for cloud access.
 6. In Settings, connect a Google account to enable Drive backup.
 
 ## Module graph

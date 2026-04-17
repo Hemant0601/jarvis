@@ -7,14 +7,14 @@ import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.channels.awaitClose
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.withContext
 
 /**
  * Wraps MediaPipe's on-device LLM inference engine. The .task model file is downloaded
  * by ModelCatalog and loaded lazily on first use.
+ *
+ * Kept deliberately sync-only for v1; streaming can be added later once the MediaPipe
+ * ProgressListener API stabilises across versions.
  */
 @Singleton
 class GemmaClient @Inject constructor(
@@ -43,13 +43,4 @@ class GemmaClient @Inject constructor(
             val e = engine ?: error("Gemma model not loaded")
             e.generateResponse(prompt)
         }
-
-    override fun stream(prompt: String, options: GenOptions): Flow<String> = callbackFlow {
-        val e = engine ?: error("Gemma model not loaded")
-        e.generateResponseAsync(prompt) { partial, done ->
-            trySend(partial)
-            if (done) close()
-        }
-        awaitClose { /* no-op: MediaPipe manages its own lifecycle */ }
-    }
 }

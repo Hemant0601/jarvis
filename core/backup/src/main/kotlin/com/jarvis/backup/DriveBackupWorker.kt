@@ -5,8 +5,8 @@ import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.google.android.gms.auth.api.signin.GoogleSignIn
-import com.google.api.client.extensions.android.http.AndroidHttp
 import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential
+import com.google.api.client.http.javanet.NetHttpTransport
 import com.google.api.client.json.gson.GsonFactory
 import com.google.api.services.drive.Drive
 import com.google.api.services.drive.DriveScopes
@@ -43,7 +43,7 @@ class DriveBackupWorker @AssistedInject constructor(
         ).apply { selectedAccount = account.account }
 
         val drive = Drive.Builder(
-            AndroidHttp.newCompatibleTransport(),
+            NetHttpTransport(),
             GsonFactory.getDefaultInstance(),
             credential,
         ).setApplicationName("Jarvis").build()

@@ -1,18 +1,15 @@
 package com.jarvis.llm
 
 import com.squareup.moshi.JsonClass
+import com.squareup.moshi.Moshi
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import com.squareup.moshi.Moshi
-import com.squareup.moshi.adapter
 
 @JsonClass(generateAdapter = true)
 data class ChatMessage(val role: String, val content: String)
@@ -31,10 +28,6 @@ data class ChatChoice(val message: ChatMessage)
 @JsonClass(generateAdapter = true)
 data class ChatResponse(val choices: List<ChatChoice>)
 
-/**
- * Thin OpenRouter HTTP client. Deliberately light on abstraction; streaming
- * support lives in a separate flow path.
- */
 @Singleton
 class OpenRouterClient @Inject constructor(
     private val http: OkHttpClient,
@@ -49,7 +42,7 @@ class OpenRouterClient @Inject constructor(
     private val defaultModel = "google/gemini-flash-1.5"
     private val jsonMedia = "application/json; charset=utf-8".toMediaType()
 
-    override suspend fun generate(prompt: String, options: GenOptions): String {
+    override suspend fun generate(prompt: String, options: GenOptions): String = withContext(Dispatchers.IO) {
         val key = settings.openRouterKey().takeIf { it.isNotBlank() }
             ?: error("OpenRouter API key not set")
         val body = reqAdapter.toJson(
@@ -71,11 +64,7 @@ class OpenRouterClient @Inject constructor(
             if (!resp.isSuccessful) error("OpenRouter error ${resp.code}")
             val payload = resp.body?.string().orEmpty()
             val parsed = resAdapter.fromJson(payload) ?: error("Empty OpenRouter response")
-            return parsed.choices.firstOrNull()?.message?.content.orEmpty()
+            parsed.choices.firstOrNull()?.message?.content.orEmpty()
         }
     }
-
-    override fun stream(prompt: String, options: GenOptions): Flow<String> = flow {
-        emit(generate(prompt, options))
-    }.flowOn(Dispatchers.IO)
 }

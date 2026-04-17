@@ -9,11 +9,9 @@ import javax.inject.Singleton
 
 /**
  * Routes a question to either the on-device Gemma client or the OpenRouter cloud
- * client based on user preference + availability, builds the Graph RAG prompt,
- * and returns the model's answer.
- *
- * Per session decisions live in the UI (per-chat toggle). The router only honours
- * the request when the selected client is actually available.
+ * client, builds the Graph RAG prompt, and returns the answer. If neither is
+ * available, returns a "grounded summary" straight from the retrieved memories —
+ * not as fluent as an LLM answer, but still useful and completely offline.
  */
 @Singleton
 class LlmRouter @Inject constructor(
@@ -26,14 +24,18 @@ class LlmRouter @Inject constructor(
         context: RetrievalContext,
         preferCloud: Boolean,
     ): String {
-        val prompt = buildPrompt(question, context)
-        val client: LlmClient = when {
+        val client: LlmClient? = when {
             preferCloud && settings.openRouterKey().isNotBlank() -> cloud
             gemma.isLoaded() -> gemma
             settings.openRouterKey().isNotBlank() -> cloud
-            else -> return "No LLM is available yet. Download Gemma or add an OpenRouter key in Settings."
+            else -> null
         }
-        return client.generate(prompt)
+        if (client == null) return fallbackAnswer(question, context)
+        val prompt = buildPrompt(question, context)
+        return runCatching { client.generate(prompt) }
+            .getOrElse { error ->
+                "Couldn't reach ${client.id} (${error.message ?: "unknown"}).\n\n" + fallbackAnswer(question, context)
+            }
     }
 
     private fun buildPrompt(question: String, ctx: RetrievalContext): String = buildString {
@@ -48,5 +50,24 @@ class LlmRouter @Inject constructor(
         appendLine()
         appendLine("Question: $question")
         appendLine("Answer:")
+    }
+
+    /**
+     * Offline, no-LLM fallback. Returns the top retrieved memory excerpts framed as
+     * a short, honest answer — enough for the app to be useful before any model is
+     * downloaded.
+     */
+    private fun fallbackAnswer(question: String, ctx: RetrievalContext): String {
+        if (ctx.chunks.isEmpty()) {
+            return "I don't have any memories about that yet. Capture a note and ask again."
+        }
+        return buildString {
+            appendLine("From your memory:")
+            ctx.chunks.take(5).forEachIndexed { i, c ->
+                appendLine("${i + 1}. ${c.nodeLabel} — ${c.text.take(220)}")
+            }
+            appendLine()
+            append("(Download Gemma or add an OpenRouter key in Settings for a proper answer.)")
+        }
     }
 }

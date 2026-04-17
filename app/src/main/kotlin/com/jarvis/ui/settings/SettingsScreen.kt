@@ -8,10 +8,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
-import androidx.compose.material3.Divider
+import com.jarvis.backup.GoogleSignInContract
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -31,6 +32,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 @Composable
 fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val signInLauncher = rememberLauncherForActivityResult(GoogleSignInContract()) { account ->
+        viewModel.onSignInResult(account?.email)
+    }
 
     Column(
         modifier = Modifier
@@ -42,7 +46,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
         Text("Models", style = MaterialTheme.typography.titleMedium)
 
         ModelRow(
-            name = "Gemma 3 (on-device)",
+            name = "Gemma 4 E2B (on-device)",
             status = state.gemmaStatus,
             progress = state.gemmaDownloadProgress,
             onDownload = viewModel::downloadGemma,
@@ -86,7 +90,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Row {
-            Button(onClick = viewModel::signInWithGoogle) {
+            Button(onClick = { signInLauncher.launch(Unit) }) {
                 Text(if (state.googleAccount == null) "Connect Google" else "Connected: ${state.googleAccount}")
             }
             Spacer(Modifier.size(12.dp))

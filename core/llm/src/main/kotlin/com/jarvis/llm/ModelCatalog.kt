@@ -17,11 +17,17 @@ enum class ModelKind(
     val downloadUrl: String,
     val approxSizeMb: Int,
 ) {
+    /**
+     * Gemma 4 E2B (Apr 2026, Apache 2.0). Effective-2B model, ~2 GB .task for
+     * MediaPipe LlmInference. The upstream repo keeps both a `.litertlm` and a
+     * `-web.task` — the .task is the MediaPipe-unified format that tasks-genai
+     * can load on Android.
+     */
     Gemma(
-        displayName = "Gemma 3 1B (INT4)",
-        filename = "gemma3-1b-it-int4.task",
-        downloadUrl = "https://storage.googleapis.com/mediapipe-models/llm/gemma3-1b-it-int4.task",
-        approxSizeMb = 555,
+        displayName = "Gemma 4 E2B (on-device)",
+        filename = "gemma-4-e2b-it.task",
+        downloadUrl = "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it-web.task",
+        approxSizeMb = 2_000,
     ),
     Whisper(
         displayName = "Whisper small (multilingual)",
@@ -39,8 +45,7 @@ enum class ModelKind(
 
 /**
  * Manages download + lifecycle of all on-device model files. Files land in the
- * app's private files dir (not visible to other apps). The UI reads progress via
- * callbacks wired through the ViewModel.
+ * app's private files dir (not visible to other apps).
  */
 @Singleton
 class ModelCatalog @Inject constructor(
@@ -51,10 +56,11 @@ class ModelCatalog @Inject constructor(
     private val modelsDir: File = File(context.filesDir, "models").apply { mkdirs() }
 
     fun fileOf(kind: ModelKind): File = File(modelsDir, kind.filename)
+    fun isInstalled(kind: ModelKind): Boolean = fileOf(kind).exists()
 
     fun statusOf(kind: ModelKind): String {
         val f = fileOf(kind)
-        if (!f.exists()) return "Not installed · ${kind.approxSizeMb} MB"
+        if (!f.exists()) return "Not installed · ~${kind.approxSizeMb} MB"
         val mb = f.length() / (1024 * 1024)
         return "Installed · $mb MB"
     }
@@ -63,7 +69,9 @@ class ModelCatalog @Inject constructor(
         scope.launch {
             val req = Request.Builder().url(kind.downloadUrl).build()
             http.newCall(req).execute().use { resp ->
-                val total = resp.body?.contentLength()?.takeIf { it > 0 } ?: kind.approxSizeMb * 1024L * 1024L
+                if (!resp.isSuccessful) error("Download failed: HTTP ${resp.code}")
+                val total = resp.body?.contentLength()?.takeIf { it > 0 }
+                    ?: (kind.approxSizeMb * 1024L * 1024L)
                 val tmp = File(modelsDir, "${kind.filename}.part")
                 tmp.outputStream().use { out ->
                     resp.body!!.byteStream().use { input ->

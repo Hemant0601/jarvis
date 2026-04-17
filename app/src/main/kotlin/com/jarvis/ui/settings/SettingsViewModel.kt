@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.jarvis.backup.BackupManager
 import com.jarvis.backup.GoogleAuthController
+import com.jarvis.llm.GemmaClient
 import com.jarvis.llm.ModelCatalog
 import com.jarvis.llm.ModelKind
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -13,6 +14,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import timber.log.Timber
 
 data class SettingsUiState(
     val gemmaStatus: String = "Not installed",
@@ -31,6 +33,7 @@ data class SettingsUiState(
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val models: ModelCatalog,
+    private val gemma: GemmaClient,
     private val auth: GoogleAuthController,
     private val backup: BackupManager,
 ) : ViewModel() {
@@ -55,21 +58,41 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun downloadGemma() = models.download(ModelKind.Gemma, viewModelScope) { p ->
-        _state.update { it.copy(gemmaDownloadProgress = p) }
-    }.also { refresh() }
+    fun downloadGemma() {
+        models.download(ModelKind.Gemma, viewModelScope) { p ->
+            _state.update { it.copy(gemmaDownloadProgress = p) }
+            if (p >= 1f) {
+                runCatching { gemma.load(models.fileOf(ModelKind.Gemma)) }
+                    .onFailure { Timber.e(it, "Gemma load after download failed") }
+                _state.update { it.copy(gemmaDownloadProgress = null) }
+                refresh()
+            }
+        }
+    }
 
     fun removeGemma() { models.remove(ModelKind.Gemma); refresh() }
 
-    fun downloadWhisper() = models.download(ModelKind.Whisper, viewModelScope) { p ->
-        _state.update { it.copy(whisperDownloadProgress = p) }
-    }.also { refresh() }
+    fun downloadWhisper() {
+        models.download(ModelKind.Whisper, viewModelScope) { p ->
+            _state.update { it.copy(whisperDownloadProgress = p) }
+            if (p >= 1f) {
+                _state.update { it.copy(whisperDownloadProgress = null) }
+                refresh()
+            }
+        }
+    }
 
     fun removeWhisper() { models.remove(ModelKind.Whisper); refresh() }
 
-    fun downloadEmbedding() = models.download(ModelKind.Embedding, viewModelScope) { p ->
-        _state.update { it.copy(embeddingDownloadProgress = p) }
-    }.also { refresh() }
+    fun downloadEmbedding() {
+        models.download(ModelKind.Embedding, viewModelScope) { p ->
+            _state.update { it.copy(embeddingDownloadProgress = p) }
+            if (p >= 1f) {
+                _state.update { it.copy(embeddingDownloadProgress = null) }
+                refresh()
+            }
+        }
+    }
 
     fun removeEmbedding() { models.remove(ModelKind.Embedding); refresh() }
 
@@ -83,9 +106,8 @@ class SettingsViewModel @Inject constructor(
         _state.update { it.copy(autoBackupEnabled = v) }
     }
 
-    fun signInWithGoogle() = viewModelScope.launch {
-        auth.signIn()
-        refresh()
+    fun onSignInResult(email: String?) {
+        _state.update { it.copy(googleAccount = email ?: it.googleAccount) }
     }
 
     fun backupNow() = viewModelScope.launch {

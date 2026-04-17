@@ -36,6 +36,9 @@ interface GraphDao {
     @Query("SELECT * FROM chunks WHERE nodeId IN (:nodeIds)")
     suspend fun chunksFor(nodeIds: List<String>): List<ChunkEntity>
 
+    @Query("SELECT * FROM chunks WHERE id IN (:ids)")
+    suspend fun chunksByIds(ids: List<String>): List<ChunkEntity>
+
     @Query("SELECT * FROM embeddings WHERE ownerKind = :kind")
     suspend fun embeddings(kind: String): List<EmbeddingEntity>
 

@@ -10,6 +10,7 @@ import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.abs
+import kotlin.math.max
 import kotlin.math.min
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -83,5 +84,4 @@ class AudioRecorder @Inject constructor(
         return RecordedClip(output ?: error("No clip recorded"))
     }
 
-    private fun max(a: Int, b: Int) = if (a > b) a else b
 }

@@ -20,6 +20,7 @@ android {
 dependencies {
     api(project(":core:common"))
     implementation(project(":core:data"))
+    implementation(libs.androidx.activity.ktx)
     implementation(libs.play.services.auth)
     implementation(libs.google.api.client.android)
     implementation(libs.google.api.services.drive)

@@ -13,9 +13,10 @@ data class NodeCard(val id: String, val label: String, val category: String)
 /**
  * Hybrid retrieval:
  *   1. Embed the query.
- *   2. Top-k cosine search against chunk embeddings (vector stage).
- *   3. Expand the owning nodes by 1–2 graph hops, collecting neighbours.
- *   4. Pull chunks for the expanded set, rank, return top N with provenance.
+ *   2. Cosine search against chunk embeddings → seed chunk IDs.
+ *   3. Resolve owning nodes, expand by up to `hops` via edges (BFS).
+ *   4. Pull chunks from the expanded node set, score each by
+ *      (chunk-cosine · 1 / (1 + hops)), return top-K with provenance.
  */
 @Singleton
 class GraphRagRetriever @Inject constructor(
@@ -27,37 +28,38 @@ class GraphRagRetriever @Inject constructor(
 
     suspend fun retrieve(query: String, topK: Int = 8, hops: Int = 2): RetrievalContext {
         val q = embeddings.embed(query)
-
-        // Stage 1: vector search over chunk embeddings.
         val chunkEmbeds = dao.embeddings("chunk")
-        val ranked = chunkEmbeds
+        if (chunkEmbeds.isEmpty()) return RetrievalContext(query, emptyList(), emptyList())
+
+        // 1. Vector stage: rank chunk embeddings by cosine.
+        val rankedByChunkId: Map<String, Float> = chunkEmbeds
             .asSequence()
-            .map { it to Vectors.cosine(q, Vectors.unpack(it.vector, it.dim)) }
+            .map { it.ownerId to score(q, it) }
             .sortedByDescending { it.second }
-            .take(topK * 2)
-            .toList()
+            .take(topK * 3)
+            .toMap()
 
-        val seedChunkIds = ranked.map { it.first.ownerId }
-        val seedChunks = dao.chunksFor(emptyList()) // fetched below by node
-        val rankedByChunk = ranked.associate { it.first.ownerId to it.second }
+        // 2. Resolve seed chunks → seed node IDs.
+        val seedChunks = dao.chunksByIds(rankedByChunkId.keys.toList())
+        val seedNodeIds = seedChunks.map { it.nodeId }.distinct()
+        if (seedNodeIds.isEmpty()) return RetrievalContext(query, emptyList(), emptyList())
 
-        // Stage 2: resolve owner nodes + 1–2 hop expansion.
-        val chunks = dao.chunksFor(emptyList()) // placeholder; real impl: chunk-by-id DAO
-        val seedNodeIds = chunks.filter { it.id in seedChunkIds }.map { it.nodeId }.distinct()
-        val expanded = expand(seedNodeIds, hops)
+        // 3. BFS expansion.
+        val distance: Map<String, Int> = bfs(seedNodeIds, hops)
 
-        // Stage 3: pull chunks for all nodes in the expanded set, re-rank.
-        val allChunks = dao.chunksFor(expanded.keys.toList())
+        // 4. Pull every chunk for the expanded set, score, trim.
+        val allChunks = dao.chunksFor(distance.keys.toList())
         val results = allChunks
             .map { c ->
-                val baseScore = rankedByChunk[c.id] ?: 0f
-                val hopPenalty = 1f / (1f + (expanded[c.nodeId] ?: 0))
+                val base = rankedByChunkId[c.id] ?: 0f
+                val hop = distance[c.nodeId] ?: 0
+                val score = base * (1f / (1f + hop))
                 RetrievedChunk(
                     nodeId = c.nodeId,
                     nodeLabel = dao.node(c.nodeId)?.label ?: c.nodeId,
                     text = c.text,
-                    score = baseScore * hopPenalty,
-                    hops = expanded[c.nodeId] ?: 0,
+                    score = score,
+                    hops = hop,
                 )
             }
             .sortedByDescending { it.score }
@@ -66,24 +68,26 @@ class GraphRagRetriever @Inject constructor(
         return RetrievalContext(query = query, chunks = results, paths = emptyList())
     }
 
-    private suspend fun expand(seedNodeIds: List<String>, hops: Int): Map<String, Int> {
-        val distances = mutableMapOf<String, Int>()
-        seedNodeIds.forEach { distances[it] = 0 }
-        var frontier: Set<String> = seedNodeIds.toSet()
-        repeat(hops) { depth ->
-            if (frontier.isEmpty()) return@repeat
-            val nextEdges: List<EdgeEntity> = dao.edgesForNodes(frontier.toList())
+    private fun score(q: FloatArray, e: EmbeddingEntity): Float {
+        val v = Vectors.unpack(e.vector, e.dim)
+        return Vectors.cosine(q, v)
+    }
+
+    private suspend fun bfs(seeds: List<String>, hops: Int): Map<String, Int> {
+        val distance = mutableMapOf<String, Int>()
+        seeds.forEach { distance[it] = 0 }
+        var frontier: Set<String> = seeds.toSet()
+        for (depth in 1..hops) {
+            if (frontier.isEmpty()) break
+            val edges: List<EdgeEntity> = dao.edgesForNodes(frontier.toList())
             val next = mutableSetOf<String>()
-            nextEdges.forEach { e ->
+            edges.forEach { e ->
                 listOf(e.fromId, e.toId).forEach { id ->
-                    if (id !in distances) {
-                        distances[id] = depth + 1
-                        next += id
-                    }
+                    if (distance.putIfAbsent(id, depth) == null) next += id
                 }
             }
             frontier = next
         }
-        return distances
+        return distance
     }
 }

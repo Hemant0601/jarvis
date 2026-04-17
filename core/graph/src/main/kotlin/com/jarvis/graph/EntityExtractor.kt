@@ -24,8 +24,8 @@ data class ExtractionResult(
 
 /**
  * Runs Gemma with a tight structured-output prompt to extract entities/relations
- * from a newly captured note. Falls back to an empty list if the model isn't loaded
- * or the response can't be parsed — ingest should still persist the raw text.
+ * from a newly captured note. Falls back to a simple regex-based entity guesser
+ * when Gemma isn't loaded so ingest still populates the graph.
  */
 @Singleton
 class EntityExtractor @Inject constructor(
@@ -35,17 +35,42 @@ class EntityExtractor @Inject constructor(
     private val adapter = moshi.adapter(ExtractionResult::class.java)
 
     suspend fun extract(text: String): ExtractionResult {
-        if (!gemma.isLoaded()) return ExtractionResult()
-        val prompt = """
-            Extract structured entities from the note below. Return ONLY JSON matching this shape:
-            {"entities":[{"name":"...","category":"Person|Topic|Event|Place|Document","description":"...","relationToSource":"...","confidence":0.0-1.0}]}
+        return if (gemma.isLoaded()) extractWithGemma(text) else extractHeuristically(text)
+    }
 
-            Note:
-            ""${'"'}$text""${'"'}
-        """.trimIndent()
+    private suspend fun extractWithGemma(text: String): ExtractionResult {
+        val prompt = buildString {
+            appendLine("Extract entities from the note. Return ONLY JSON of this shape:")
+            appendLine("""{"entities":[{"name":"...","category":"Person|Topic|Event|Place|Document","description":"...","relationToSource":"...","confidence":0.0-1.0}]}""")
+            appendLine()
+            appendLine("Note:")
+            appendLine(text)
+        }
         val raw = runCatching { gemma.generate(prompt, GenOptions(maxTokens = 512, temperature = 0.2f)) }
-            .getOrNull() ?: return ExtractionResult()
-        val json = raw.substringAfter('{', "").let { "{$it" }.substringBeforeLast('}', "") + "}"
-        return runCatching { adapter.fromJson(json) ?: ExtractionResult() }.getOrElse { ExtractionResult() }
+            .getOrNull() ?: return extractHeuristically(text)
+        val start = raw.indexOf('{')
+        val end = raw.lastIndexOf('}')
+        if (start < 0 || end <= start) return extractHeuristically(text)
+        val json = raw.substring(start, end + 1)
+        return runCatching { adapter.fromJson(json) ?: ExtractionResult() }
+            .getOrElse { extractHeuristically(text) }
+    }
+
+    /**
+     * Zero-dependency fallback. Picks up capitalised multi-word tokens as Topics and
+     * simple @mentions as Persons. Crude, but it keeps the graph alive before any
+     * LLM is downloaded.
+     */
+    private fun extractHeuristically(text: String): ExtractionResult {
+        val persons = Regex("""@([A-Za-z][A-Za-z0-9_]{2,})""")
+            .findAll(text)
+            .map { ExtractedEntity(name = it.groupValues[1], category = "Person", confidence = 0.5f, relationToSource = "mentions") }
+
+        val topics = Regex("""\b([A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,}){0,3})\b""")
+            .findAll(text)
+            .map { ExtractedEntity(name = it.value, category = "Topic", confidence = 0.4f, relationToSource = "mentions") }
+
+        val entities = (persons + topics).distinctBy { it.name.lowercase() }.take(8).toList()
+        return ExtractionResult(entities)
     }
 }
