@@ -16,7 +16,6 @@ splashscreen = "1.0.1"
 
 room = "2.6.1"
 sqlcipher = "4.6.0"
-sqliteAndroid = "3.45.0"
 
 okhttp = "4.12.0"
 retrofit = "2.11.0"
@@ -72,7 +71,6 @@ room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "
 room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
 room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
 sqlcipher = { group = "net.zetetic", name = "sqlcipher-android", version.ref = "sqlcipher" }
-sqlite-android = { group = "androidx.sqlite", name = "sqlite-ktx", version.ref = "sqliteAndroid" }
 
 hilt-android = { group = "com.google.dagger", name = "hilt-android", version.ref = "hilt" }
 hilt-compiler = { group = "com.google.dagger", name = "hilt-android-compiler", version.ref = "hilt" }

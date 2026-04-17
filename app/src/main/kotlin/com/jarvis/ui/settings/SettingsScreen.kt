@@ -32,8 +32,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 @Composable
 fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val signInLauncher = rememberLauncherForActivityResult(GoogleSignInContract()) { account ->
-        viewModel.onSignInResult(account?.email)
+    val signInLauncher = rememberLauncherForActivityResult(GoogleSignInContract()) { email ->
+        viewModel.onSignInResult(email)
     }
 
     Column(

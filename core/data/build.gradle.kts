@@ -26,7 +26,6 @@ dependencies {
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
     implementation(libs.sqlcipher)
-    implementation(libs.sqlite.android)
 
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)

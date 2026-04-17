@@ -5,7 +5,6 @@ import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.Scope
 import com.google.api.services.drive.DriveScopes
-import com.google.api.services.gmail.GmailScopes
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -22,10 +21,7 @@ class GoogleAuthController @Inject constructor(
     private val signInOptions: GoogleSignInOptions =
         GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
             .requestEmail()
-            .requestScopes(
-                Scope(DriveScopes.DRIVE_APPDATA),
-                Scope(GmailScopes.GMAIL_SEND),
-            )
+            .requestScopes(Scope(DriveScopes.DRIVE_APPDATA))
             .build()
 
     fun currentAccountEmail(): String? =

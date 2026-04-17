@@ -23,6 +23,8 @@ dependencies {
     implementation(project(":core:embed"))
     implementation(project(":core:llm"))
 
+    implementation(libs.moshi.kotlin)
+
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
 }

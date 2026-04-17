@@ -3,6 +3,7 @@ package com.jarvis.data.db
 import android.content.Context
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import dagger.hilt.android.qualifiers.ApplicationContext
 import java.security.SecureRandom
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -16,7 +17,7 @@ import javax.inject.Singleton
  */
 @Singleton
 class DatabaseKey @Inject constructor(
-    context: Context,
+    @ApplicationContext context: Context,
 ) {
     private val prefs = EncryptedSharedPreferences.create(
         context,

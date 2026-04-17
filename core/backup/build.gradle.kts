@@ -24,9 +24,10 @@ dependencies {
     implementation(libs.play.services.auth)
     implementation(libs.google.api.client.android)
     implementation(libs.google.api.services.drive)
-    implementation(libs.google.api.services.gmail)
     implementation(libs.androidx.work.runtime)
     implementation(libs.androidx.security.crypto)
     implementation(libs.hilt.android)
+    implementation(libs.hilt.work)
     ksp(libs.hilt.compiler)
+    ksp("androidx.hilt:hilt-compiler:1.2.0")
 }
