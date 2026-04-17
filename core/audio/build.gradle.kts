@@ -19,8 +19,6 @@ android {
 
 dependencies {
     api(project(":core:common"))
-    implementation(project(":core:llm"))
-    implementation(libs.whisper.jni)
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
 }

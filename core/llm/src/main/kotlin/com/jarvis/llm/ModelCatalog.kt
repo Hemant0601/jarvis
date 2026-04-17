@@ -32,12 +32,6 @@ enum class ModelKind(
         downloadUrl = "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it-web.task",
         approxSizeMb = 2_000,
     ),
-    Whisper(
-        displayName = "Whisper small (multilingual)",
-        filename = "ggml-small.bin",
-        downloadUrl = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin",
-        approxSizeMb = 466,
-    ),
     Embedding(
         displayName = "all-MiniLM-L6-v2 (384d)",
         filename = "all-minilm-l6-v2.onnx",

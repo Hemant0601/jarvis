@@ -2,6 +2,7 @@ package com.jarvis.llm
 
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.Moshi
+import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
@@ -35,7 +36,7 @@ class OpenRouterClient @Inject constructor(
 ) : LlmClient {
 
     override val id: String = "openrouter"
-    private val moshi: Moshi = Moshi.Builder().build()
+    private val moshi: Moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
     private val reqAdapter = moshi.adapter(ChatRequest::class.java)
     private val resAdapter = moshi.adapter(ChatResponse::class.java)
 

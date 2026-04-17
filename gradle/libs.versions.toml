@@ -26,7 +26,6 @@ kotlinxDatetime = "0.6.1"
 
 mediapipeTasksGenai = "0.10.21"
 onnxruntime = "1.19.0"
-whisperJni = "1.7.1"
 
 playServicesAuth = "21.2.0"
 googleApiClientAndroid = "2.7.0"
@@ -89,7 +88,6 @@ moshi-kotlin = { group = "com.squareup.moshi", name = "moshi-kotlin", version.re
 
 mediapipe-tasks-genai = { group = "com.google.mediapipe", name = "tasks-genai", version.ref = "mediapipeTasksGenai" }
 onnxruntime-android = { group = "com.microsoft.onnxruntime", name = "onnxruntime-android", version.ref = "onnxruntime" }
-whisper-jni = { group = "io.github.givimad", name = "whisper-jni", version.ref = "whisperJni" }
 
 play-services-auth = { group = "com.google.android.gms", name = "play-services-auth", version.ref = "playServicesAuth" }
 google-api-client-android = { group = "com.google.api-client", name = "google-api-client-android", version.ref = "googleApiClientAndroid" }

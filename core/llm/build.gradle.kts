@@ -25,6 +25,8 @@ dependencies {
     implementation(libs.okhttp.logging)
     implementation(libs.retrofit)
     implementation(libs.retrofit.converter.moshi)
+    // moshi-kotlin provides the reflective KotlinJsonAdapterFactory so
+    // @JsonClass data classes resolve without running moshi-kotlin-codegen.
     implementation(libs.moshi.kotlin)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.work.runtime)

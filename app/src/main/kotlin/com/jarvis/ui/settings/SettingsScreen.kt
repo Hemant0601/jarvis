@@ -71,13 +71,6 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
             onRemove = viewModel::removeGemma,
         )
         ModelRow(
-            name = "Whisper (on-device)",
-            status = state.whisperStatus,
-            progress = state.whisperDownloadProgress,
-            onDownload = viewModel::downloadWhisper,
-            onRemove = viewModel::removeWhisper,
-        )
-        ModelRow(
             name = "Embedding model (ONNX)",
             status = state.embeddingStatus,
             progress = state.embeddingDownloadProgress,

@@ -19,8 +19,6 @@ import timber.log.Timber
 data class SettingsUiState(
     val gemmaStatus: String = "Not installed",
     val gemmaDownloadProgress: Float? = null,
-    val whisperStatus: String = "Not installed",
-    val whisperDownloadProgress: Float? = null,
     val embeddingStatus: String = "Not installed",
     val embeddingDownloadProgress: Float? = null,
     val openRouterKey: String = "",
@@ -48,7 +46,6 @@ class SettingsViewModel @Inject constructor(
         _state.update {
             it.copy(
                 gemmaStatus = models.statusOf(ModelKind.Gemma),
-                whisperStatus = models.statusOf(ModelKind.Whisper),
                 embeddingStatus = models.statusOf(ModelKind.Embedding),
                 openRouterKey = models.openRouterKey(),
                 autoBackupEnabled = backup.autoBackupEnabled(),
@@ -81,23 +78,6 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun removeGemma() { models.remove(ModelKind.Gemma); refresh() }
-
-    fun downloadWhisper() {
-        _state.update { it.copy(whisperDownloadProgress = 0f, lastErrorMessage = null) }
-        models.download(
-            kind = ModelKind.Whisper,
-            scope = viewModelScope,
-            onProgress = { p ->
-                _state.update { it.copy(whisperDownloadProgress = p.takeUnless { it >= 1f }) }
-                if (p >= 1f) refresh()
-            },
-            onError = { msg ->
-                _state.update { it.copy(whisperDownloadProgress = null, lastErrorMessage = "Whisper download failed: $msg") }
-            },
-        )
-    }
-
-    fun removeWhisper() { models.remove(ModelKind.Whisper); refresh() }
 
     fun downloadEmbedding() {
         _state.update { it.copy(embeddingDownloadProgress = 0f, lastErrorMessage = null) }
