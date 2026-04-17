@@ -1,0 +1,36 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!**/src/**/build/
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+captures/
+.cxx/
+
+# Local config
+local.properties
+*.keystore
+*.jks
+keystore.properties
+
+# Secrets & API keys
+secrets.properties
+.env
+.env.*
+
+# Model files (downloaded at runtime or by user)
+/models/
+*.gguf
+*.task
+*.onnx
+*.tflite
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

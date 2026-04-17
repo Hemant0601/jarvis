@@ -1,0 +1,8 @@
+# Copy to local.properties and fill in. Never commit local.properties.
+sdk.dir=/absolute/path/to/Android/Sdk
+
+# OpenRouter (optional; user can also enter in-app Settings)
+OPENROUTER_API_KEY=
+
+# Google OAuth client ID (from Google Cloud Console, Android client)
+GOOGLE_WEB_CLIENT_ID=

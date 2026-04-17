@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Audio capture -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!-- Network for OpenRouter / Google APIs -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- Keep transcription/embedding work running briefly -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Biometric unlock -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+
+    <uses-feature android:name="android.hardware.microphone" android:required="true" />
+
+    <application
+        android:name=".JarvisApp"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Jarvis"
+        android:enableOnBackInvokedCallback="true"
+        tools:targetApi="33">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:theme="@style/Theme.Jarvis.Splash">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- Deep-link from widget to capture screen -->
+            <intent-filter>
+                <action android:name="com.jarvis.action.CAPTURE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <!-- Home-screen widget: one-tap audio / text capture -->
+        <receiver
+            android:name=".widget.CaptureWidget"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/capture_widget_info" />
+        </receiver>
+
+        <!-- Foreground recording service -->
+        <service
+            android:name="com.jarvis.audio.RecordingService"
+            android:foregroundServiceType="microphone"
+            android:exported="false" />
+
+        <!-- WorkManager custom initializer (via Hilt) -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                android:value="androidx.startup"
+                tools:node="remove" />
+        </provider>
+
+    </application>
+</manifest>
