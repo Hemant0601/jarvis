@@ -43,6 +43,24 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
+        state.lastErrorMessage?.let { msg ->
+            androidx.compose.material3.Card(
+                colors = androidx.compose.material3.CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                ),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(Modifier.padding(12.dp)) {
+                    Text(msg, color = MaterialTheme.colorScheme.onErrorContainer)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        androidx.compose.material3.TextButton(onClick = viewModel::dismissError) {
+                            Text("Dismiss")
+                        }
+                    }
+                }
+            }
+        }
+
         Text("Models", style = MaterialTheme.typography.titleMedium)
 
         ModelRow(

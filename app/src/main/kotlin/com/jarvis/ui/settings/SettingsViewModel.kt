@@ -28,6 +28,7 @@ data class SettingsUiState(
     val googleAccount: String? = null,
     val lastBackupSummary: String = "No backups yet.",
     val biometricEnabled: Boolean = false,
+    val lastErrorMessage: String? = null,
 )
 
 @HiltViewModel
@@ -58,40 +59,59 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun dismissError() = _state.update { it.copy(lastErrorMessage = null) }
+
     fun downloadGemma() {
-        models.download(ModelKind.Gemma, viewModelScope) { p ->
-            _state.update { it.copy(gemmaDownloadProgress = p) }
-            if (p >= 1f) {
-                runCatching { gemma.load(models.fileOf(ModelKind.Gemma)) }
-                    .onFailure { Timber.e(it, "Gemma load after download failed") }
-                _state.update { it.copy(gemmaDownloadProgress = null) }
-                refresh()
-            }
-        }
+        _state.update { it.copy(gemmaDownloadProgress = 0f, lastErrorMessage = null) }
+        models.download(
+            kind = ModelKind.Gemma,
+            scope = viewModelScope,
+            onProgress = { p ->
+                _state.update { it.copy(gemmaDownloadProgress = p.takeUnless { it >= 1f }) }
+                if (p >= 1f) {
+                    runCatching { gemma.load(models.fileOf(ModelKind.Gemma)) }
+                        .onFailure { Timber.e(it, "Gemma load after download failed") }
+                    refresh()
+                }
+            },
+            onError = { msg ->
+                _state.update { it.copy(gemmaDownloadProgress = null, lastErrorMessage = "Gemma download failed: $msg") }
+            },
+        )
     }
 
     fun removeGemma() { models.remove(ModelKind.Gemma); refresh() }
 
     fun downloadWhisper() {
-        models.download(ModelKind.Whisper, viewModelScope) { p ->
-            _state.update { it.copy(whisperDownloadProgress = p) }
-            if (p >= 1f) {
-                _state.update { it.copy(whisperDownloadProgress = null) }
-                refresh()
-            }
-        }
+        _state.update { it.copy(whisperDownloadProgress = 0f, lastErrorMessage = null) }
+        models.download(
+            kind = ModelKind.Whisper,
+            scope = viewModelScope,
+            onProgress = { p ->
+                _state.update { it.copy(whisperDownloadProgress = p.takeUnless { it >= 1f }) }
+                if (p >= 1f) refresh()
+            },
+            onError = { msg ->
+                _state.update { it.copy(whisperDownloadProgress = null, lastErrorMessage = "Whisper download failed: $msg") }
+            },
+        )
     }
 
     fun removeWhisper() { models.remove(ModelKind.Whisper); refresh() }
 
     fun downloadEmbedding() {
-        models.download(ModelKind.Embedding, viewModelScope) { p ->
-            _state.update { it.copy(embeddingDownloadProgress = p) }
-            if (p >= 1f) {
-                _state.update { it.copy(embeddingDownloadProgress = null) }
-                refresh()
-            }
-        }
+        _state.update { it.copy(embeddingDownloadProgress = 0f, lastErrorMessage = null) }
+        models.download(
+            kind = ModelKind.Embedding,
+            scope = viewModelScope,
+            onProgress = { p ->
+                _state.update { it.copy(embeddingDownloadProgress = p.takeUnless { it >= 1f }) }
+                if (p >= 1f) refresh()
+            },
+            onError = { msg ->
+                _state.update { it.copy(embeddingDownloadProgress = null, lastErrorMessage = "Embedding download failed: $msg") }
+            },
+        )
     }
 
     fun removeEmbedding() { models.remove(ModelKind.Embedding); refresh() }

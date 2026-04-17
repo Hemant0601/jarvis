@@ -6,10 +6,13 @@ import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import timber.log.Timber
 
 enum class ModelKind(
     val displayName: String,
@@ -65,11 +68,16 @@ class ModelCatalog @Inject constructor(
         return "Installed · $mb MB"
     }
 
-    fun download(kind: ModelKind, scope: CoroutineScope, onProgress: (Float) -> Unit): Job =
-        scope.launch {
+    fun download(
+        kind: ModelKind,
+        scope: CoroutineScope,
+        onProgress: (Float) -> Unit,
+        onError: (String) -> Unit = {},
+    ): Job = scope.launch(Dispatchers.IO) {
+        runCatching {
             val req = Request.Builder().url(kind.downloadUrl).build()
             http.newCall(req).execute().use { resp ->
-                if (!resp.isSuccessful) error("Download failed: HTTP ${resp.code}")
+                if (!resp.isSuccessful) error("HTTP ${resp.code}")
                 val total = resp.body?.contentLength()?.takeIf { it > 0 }
                     ?: (kind.approxSizeMb * 1024L * 1024L)
                 val tmp = File(modelsDir, "${kind.filename}.part")
@@ -77,19 +85,30 @@ class ModelCatalog @Inject constructor(
                     resp.body!!.byteStream().use { input ->
                         val buf = ByteArray(64 * 1024)
                         var read = 0L
+                        var lastReport = 0L
                         while (true) {
                             val n = input.read(buf)
                             if (n <= 0) break
                             out.write(buf, 0, n)
                             read += n
-                            onProgress((read.toFloat() / total).coerceIn(0f, 1f))
+                            // Throttle UI callbacks — a 2 GB download produces ~32k ticks otherwise.
+                            if (read - lastReport >= 1_048_576) {
+                                lastReport = read
+                                withContext(Dispatchers.Main) {
+                                    onProgress((read.toFloat() / total).coerceIn(0f, 1f))
+                                }
+                            }
                         }
                     }
                 }
                 tmp.renameTo(fileOf(kind))
-                onProgress(1f)
             }
+            withContext(Dispatchers.Main) { onProgress(1f) }
+        }.onFailure { err ->
+            Timber.e(err, "Download failed: ${kind.filename}")
+            withContext(Dispatchers.Main) { onError(err.message ?: err.javaClass.simpleName) }
         }
+    }
 
     fun remove(kind: ModelKind) { fileOf(kind).delete() }
 

@@ -28,7 +28,9 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
 
-        ndk { abiFilters += "arm64-v8a" }
+        // Universal APK — includes arm64-v8a (phones), x86_64 (emulators),
+        // armeabi-v7a (older devices). Release builds should split or restrict.
+        ndk { abiFilters += setOf("arm64-v8a", "x86_64") }
 
         buildConfigField(
             "String",

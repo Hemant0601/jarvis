@@ -46,31 +46,33 @@ class GraphViewModel @Inject constructor(
     val state: StateFlow<GraphUiState> = _state.asStateFlow()
 
     init {
-        load()
-    }
-
-    private fun load() = viewModelScope.launch {
-        val snapshot = repo.snapshot()
-        val laidOut = layout.layout(snapshot)
-        val categories = laidOut.nodes.map { it.category }.distinct()
-        _state.update {
-            it.copy(
-                nodes = laidOut.nodes,
-                edges = laidOut.edges,
-                availableCategories = categories,
-                activeCategories = categories.toSet(),
-                loading = false,
-            )
+        // Reactive: re-compute layout whenever the node count changes (new
+        // capture, seed completion, deletion, etc.).
+        viewModelScope.launch {
+            runCatching {
+                repo.observeSnapshots().collect { snapshot ->
+                    val laidOut = layout.layout(snapshot)
+                    val categories = laidOut.nodes.map { it.category }.distinct()
+                    _state.update { prev ->
+                        prev.copy(
+                            nodes = laidOut.nodes,
+                            edges = laidOut.edges,
+                            availableCategories = categories,
+                            activeCategories = prev.activeCategories.ifEmpty { categories.toSet() }
+                                .intersect(categories.toSet()),
+                            loading = false,
+                        )
+                    }
+                }
+            }
         }
     }
 
     fun toggleCategory(cat: String) {
         _state.update {
-            val next = if (cat in it.activeCategories) it.activeCategories - cat else it.activeCategories + cat
-            it.copy(
-                activeCategories = next,
-                nodes = it.nodes.filter { n -> n.category in next }.ifEmpty { it.nodes },
-            )
+            val next = if (cat in it.activeCategories) it.activeCategories - cat
+            else it.activeCategories + cat
+            it.copy(activeCategories = next)
         }
     }
 }
