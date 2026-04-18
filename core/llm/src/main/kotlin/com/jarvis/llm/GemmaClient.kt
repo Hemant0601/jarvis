@@ -25,7 +25,7 @@ class GemmaClient @Inject constructor(
     private val catalogProvider: Provider<ModelCatalog>,
 ) : LlmClient {
 
-    override val id: String = "gemma-4-on-device"
+    override val id: String = "gemma-3-on-device"
 
     @Volatile private var engine: LlmInference? = null
     @Volatile private var lastError: String? = null
