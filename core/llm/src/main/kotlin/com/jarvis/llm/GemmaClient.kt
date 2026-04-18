@@ -45,6 +45,16 @@ class GemmaClient @Inject constructor(
         } catch (t: Throwable) {
             Timber.e(t, "Gemma load failed")
             lastError = t.message ?: t.javaClass.simpleName
+            // MediaPipeTasksStatus=104 ("Unable to open zip archive") means the
+            // .task file isn't a format this MediaPipe runtime understands.
+            // Delete it so the user can re-download a compatible model cleanly
+            // from Settings instead of being stuck forever.
+            val incompatible = t.message?.contains("MediaPipeTasksStatus='104'") == true ||
+                t.message?.contains("Unable to open zip archive") == true
+            if (incompatible) {
+                Timber.w("Deleting incompatible model file: ${modelFile.name}")
+                runCatching { modelFile.delete() }
+            }
             throw t
         }
     }

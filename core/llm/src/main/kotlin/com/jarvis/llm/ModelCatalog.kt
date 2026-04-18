@@ -21,16 +21,18 @@ enum class ModelKind(
     val approxSizeMb: Int,
 ) {
     /**
-     * Gemma 4 E2B (Apr 2026, Apache 2.0). Effective-2B model, ~2 GB .task for
-     * MediaPipe LlmInference. The upstream repo keeps both a `.litertlm` and a
-     * `-web.task` — the .task is the MediaPipe-unified format that tasks-genai
-     * can load on Android.
+     * Gemma 3 1B IT INT4 (.task) — the on-device model officially shipped for
+     * MediaPipe tasks-genai. Google hosts the canonical .task file on their own
+     * CDN. Gemma 4 E2B's web-format .task doesn't load with tasks-genai 0.10.21
+     * on Android (MediaPipeTasksStatus=104, "Unable to open zip archive") so we
+     * stay on Gemma 3 1B INT4 here; it's 555 MB instead of 2 GB, which also
+     * downloads much faster.
      */
     Gemma(
-        displayName = "Gemma 4 E2B (on-device)",
-        filename = "gemma-4-e2b-it.task",
-        downloadUrl = "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it-web.task",
-        approxSizeMb = 2_000,
+        displayName = "Gemma 3 1B INT4 (on-device)",
+        filename = "gemma3-1b-it-int4.task",
+        downloadUrl = "https://storage.googleapis.com/mediapipe-models/llm/gemma3-1b-it-int4.task",
+        approxSizeMb = 555,
     ),
     Embedding(
         displayName = "all-MiniLM-L6-v2 (384d)",
@@ -51,6 +53,18 @@ class ModelCatalog @Inject constructor(
     private val settings: LlmSettings,
 ) {
     private val modelsDir: File = File(context.filesDir, "models").apply { mkdirs() }
+
+    init {
+        // Clean up any stale model files from older releases (e.g. the old
+        // Gemma-4 .task that doesn't load with current MediaPipe).
+        val expected = ModelKind.entries.map { it.filename }.toSet()
+        modelsDir.listFiles()?.forEach { f ->
+            if (f.isFile && f.name !in expected) {
+                Timber.i("Removing stale model file: ${f.name}")
+                f.delete()
+            }
+        }
+    }
 
     fun fileOf(kind: ModelKind): File = File(modelsDir, kind.filename)
     fun isInstalled(kind: ModelKind): Boolean = fileOf(kind).exists()

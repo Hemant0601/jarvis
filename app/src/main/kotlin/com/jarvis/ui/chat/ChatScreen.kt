@@ -3,7 +3,6 @@ package com.jarvis.ui.chat
 import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -11,9 +10,6 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -25,10 +21,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -45,19 +39,18 @@ import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -68,21 +61,14 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.jarvis.ui.theme.LocalJarvisGradient
 
-/**
- * Primary user surface. A Claude-style conversation:
- *   – type a thought + Send, or
- *   – hit the live mic for hands-free dictation.
- *
- * Every user message is ingested into the graph as a memory AND answered by
- * the LLM (on-device Gemma by default, OpenRouter when toggled). Retrieved
- * memories are shown as citation chips under the response.
- */
 @Composable
 fun ChatScreen(
     seedNodeId: String?,
@@ -107,12 +93,12 @@ fun ChatScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(com.jarvis.ui.theme.LocalJarvisGradient.current.background),
+            .background(LocalJarvisGradient.current.background),
     ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(com.jarvis.ui.theme.LocalJarvisGradient.current.accentGlow),
+                .background(LocalJarvisGradient.current.accentGlow),
         )
         Column(Modifier.fillMaxSize()) {
             ChatTopBar(
@@ -148,9 +134,7 @@ fun ChatScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     items(state.messages, key = { it.id }) { msg -> MessageBubble(msg) }
-                    if (state.thinking) {
-                        item { ThinkingBubble() }
-                    }
+                    if (state.thinking) { item { ThinkingBubble() } }
                 }
             }
 
@@ -176,10 +160,88 @@ fun ChatScreen(
 }
 
 @Composable
+private fun ChatTopBar(
+    title: String,
+    useCloud: Boolean,
+    onToggleCloud: (Boolean) -> Unit,
+    onBack: (() -> Unit)?,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (onBack != null) {
+            IconButton(onClick = onBack) {
+                Icon(
+                    Icons.AutoMirrored.Rounded.ArrowBack,
+                    contentDescription = "Back",
+                    tint = MaterialTheme.colorScheme.onBackground,
+                )
+            }
+        }
+        Icon(
+            Icons.Rounded.AutoAwesome,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier
+                .padding(start = if (onBack == null) 4.dp else 0.dp)
+                .size(20.dp),
+        )
+        Spacer(Modifier.size(8.dp))
+        Text(
+            title,
+            color = MaterialTheme.colorScheme.onBackground,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Spacer(Modifier.weight(1f))
+        ModeToggle(useCloud = useCloud, onToggle = onToggleCloud)
+    }
+}
+
+/**
+ * Compact tappable pill showing Local vs Cloud. Replaces the earlier
+ * Surface-with-Switch that clipped off the screen on narrower widths.
+ */
+@Composable
+private fun ModeToggle(useCloud: Boolean, onToggle: (Boolean) -> Unit) {
+    val bg = if (useCloud) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+    else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.08f)
+    val fg = if (useCloud) MaterialTheme.colorScheme.primary
+    else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.75f)
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = bg,
+        onClick = { onToggle(!useCloud) },
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = if (useCloud) Icons.Rounded.CloudQueue else Icons.Rounded.PhoneAndroid,
+                contentDescription = null,
+                tint = fg,
+                modifier = Modifier.size(14.dp),
+            )
+            Spacer(Modifier.size(6.dp))
+            Text(
+                if (useCloud) "Cloud" else "Local",
+                color = fg,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+            )
+        }
+    }
+}
+
+@Composable
 private fun SetupCard(onOpenSettings: () -> Unit, onDismiss: () -> Unit) {
     Surface(
         shape = RoundedCornerShape(20.dp),
-        color = Color(0xFF172236),
+        color = MaterialTheme.colorScheme.surfaceVariant,
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 8.dp),
@@ -189,30 +251,28 @@ private fun SetupCard(onOpenSettings: () -> Unit, onDismiss: () -> Unit) {
                 Icon(
                     Icons.Rounded.AutoAwesome,
                     contentDescription = null,
-                    tint = Color(0xFF9DB8FF),
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(20.dp),
                 )
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.size(8.dp))
                 Text(
                     "Finish setting up Jarvis",
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.SemiBold,
                 )
             }
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.size(6.dp))
             Text(
-                "Pick a brain before chatting: download Gemma 4 for fully on-device " +
+                "Pick a brain before chatting: download Gemma 3 1B for fully on-device " +
                     "answers, or paste an OpenRouter key to use the cloud.",
-                color = Color.White.copy(alpha = 0.7f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 13.sp,
             )
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.size(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                androidx.compose.material3.FilledTonalButton(onClick = onOpenSettings) {
-                    Text("Open Settings")
-                }
-                androidx.compose.material3.TextButton(onClick = onDismiss) {
-                    Text("Later", color = Color.White.copy(alpha = 0.6f))
+                FilledTonalButton(onClick = onOpenSettings) { Text("Open Settings") }
+                TextButton(onClick = onDismiss) {
+                    Text("Later", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -240,7 +300,7 @@ private fun LiveVoiceBanner(
     )
     Surface(
         shape = RoundedCornerShape(24.dp),
-        color = Color(0xFF1A2A4E).copy(alpha = 0.7f + glow * 0.2f),
+        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f + glow * 0.08f),
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 8.dp),
@@ -252,103 +312,21 @@ private fun LiveVoiceBanner(
                     listening = listening || speaking,
                     tall = true,
                 )
-                Spacer(Modifier.width(12.dp))
+                Spacer(Modifier.size(12.dp))
                 Text(
                     status,
-                    color = Color(0xFFC7D4F5),
+                    color = MaterialTheme.colorScheme.onBackground,
                     fontWeight = FontWeight.Medium,
                 )
             }
             if (partial.isNotBlank()) {
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.size(8.dp))
                 Text(
                     "\u201C$partial\u201D",
-                    color = Color.White.copy(alpha = 0.85f),
+                    color = MaterialTheme.colorScheme.onBackground,
                     style = MaterialTheme.typography.bodyLarge,
                 )
             }
-        }
-    }
-}
-
-@Composable
-private fun ChatTopBar(
-    title: String,
-    useCloud: Boolean,
-    onToggleCloud: (Boolean) -> Unit,
-    onBack: (() -> Unit)?,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (onBack != null) {
-            IconButton(onClick = onBack) {
-                Icon(
-                    Icons.AutoMirrored.Rounded.ArrowBack,
-                    contentDescription = "Back",
-                    tint = MaterialTheme.colorScheme.onBackground,
-                )
-            }
-            Spacer(Modifier.width(4.dp))
-        }
-        Icon(
-            Icons.Rounded.AutoAwesome,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(20.dp),
-        )
-        Spacer(Modifier.width(8.dp))
-        Text(
-            title,
-            color = MaterialTheme.colorScheme.onBackground,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Spacer(Modifier.weight(1f))
-        ModePill(useCloud = useCloud, onToggle = onToggleCloud)
-    }
-}
-
-@Composable
-private fun ModePill(useCloud: Boolean, onToggle: (Boolean) -> Unit) {
-    val bg = if (useCloud) Color(0xFF2E5AFB).copy(alpha = 0.18f) else Color.White.copy(alpha = 0.06f)
-    val fg = if (useCloud) Color(0xFF9DB8FF) else Color.White.copy(alpha = 0.75f)
-    Surface(
-        shape = RoundedCornerShape(50),
-        color = bg,
-        modifier = Modifier.heightIn(min = 32.dp),
-    ) {
-        Row(
-            modifier = Modifier
-                .padding(horizontal = 10.dp, vertical = 6.dp)
-                .fillMaxWidth(fraction = 0f) // just hug content
-                .widthIn(min = 64.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                imageVector = if (useCloud) Icons.Rounded.CloudQueue else Icons.Rounded.PhoneAndroid,
-                contentDescription = null,
-                tint = fg,
-                modifier = Modifier.size(14.dp),
-            )
-            Spacer(Modifier.width(6.dp))
-            Text(
-                if (useCloud) "Cloud" else "Local",
-                color = fg,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier.clip(CircleShape)
-                    .padding(end = 4.dp),
-            )
-            Spacer(Modifier.width(4.dp))
-            androidx.compose.material3.Switch(
-                checked = useCloud,
-                onCheckedChange = onToggle,
-                modifier = Modifier.size(width = 38.dp, height = 22.dp),
-            )
         }
     }
 }
@@ -362,6 +340,7 @@ private fun EmptyState(modifier: Modifier = Modifier) {
         animationSpec = infiniteRepeatable(tween(1800, easing = FastOutSlowInEasing), RepeatMode.Reverse),
         label = "empty-pulse",
     )
+    val accent = MaterialTheme.colorScheme.primary
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -375,10 +354,7 @@ private fun EmptyState(modifier: Modifier = Modifier) {
                 .clip(CircleShape)
                 .background(
                     Brush.radialGradient(
-                        colors = listOf(
-                            Color(0xFF6EA8FE).copy(alpha = 0.35f * pulse),
-                            Color.Transparent,
-                        ),
+                        colors = listOf(accent.copy(alpha = 0.35f * pulse), Color.Transparent),
                     ),
                 ),
             contentAlignment = Alignment.Center,
@@ -386,23 +362,23 @@ private fun EmptyState(modifier: Modifier = Modifier) {
             Icon(
                 Icons.Rounded.AutoAwesome,
                 contentDescription = null,
-                tint = Color(0xFF9DB8FF),
+                tint = accent,
                 modifier = Modifier.size(48.dp),
             )
         }
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.size(24.dp))
         Text(
             "Hi, I'm Jarvis.",
-            color = Color.White,
+            color = MaterialTheme.colorScheme.onBackground,
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.SemiBold,
         )
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.size(8.dp))
         Text(
             "Tell me something worth remembering,\nor ask me anything I've stored.",
-            color = Color.White.copy(alpha = 0.6f),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodyMedium,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            textAlign = TextAlign.Center,
         )
     }
 }
@@ -422,16 +398,18 @@ private fun MessageBubble(msg: ChatMessageUi) {
                     bottomStart = if (msg.fromUser) 20.dp else 4.dp,
                     bottomEnd = if (msg.fromUser) 4.dp else 20.dp,
                 ),
-                color = if (msg.fromUser) MaterialTheme.colorScheme.primary else Color(0xFF1A2233),
+                color = if (msg.fromUser) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.surfaceVariant,
             ) {
                 Text(
                     msg.text,
-                    color = if (msg.fromUser) MaterialTheme.colorScheme.onPrimary else Color.White,
+                    color = if (msg.fromUser) MaterialTheme.colorScheme.onPrimary
+                    else MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                 )
             }
             if (msg.memoryCites.isNotEmpty()) {
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.size(6.dp))
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     modifier = Modifier.padding(horizontal = 4.dp),
@@ -439,11 +417,11 @@ private fun MessageBubble(msg: ChatMessageUi) {
                     msg.memoryCites.take(3).forEach { cite ->
                         Surface(
                             shape = RoundedCornerShape(50),
-                            color = Color.White.copy(alpha = 0.06f),
+                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.06f),
                         ) {
                             Text(
                                 cite,
-                                color = Color.White.copy(alpha = 0.6f),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontSize = 10.sp,
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                             )
@@ -464,10 +442,11 @@ private fun ThinkingBubble() {
         animationSpec = infiniteRepeatable(tween(700), RepeatMode.Reverse),
         label = "think-alpha",
     )
+    val dotColor = MaterialTheme.colorScheme.onSurfaceVariant
     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterStart) {
         Surface(
             shape = RoundedCornerShape(20.dp, 20.dp, 20.dp, 4.dp),
-            color = Color(0xFF1A2233),
+            color = MaterialTheme.colorScheme.surfaceVariant,
         ) {
             Row(
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
@@ -487,7 +466,7 @@ private fun ThinkingBubble() {
                         Modifier
                             .size(8.dp)
                             .clip(CircleShape)
-                            .background(Color.White.copy(alpha = phase * alpha)),
+                            .background(dotColor.copy(alpha = phase * alpha)),
                     )
                 }
             }
@@ -515,14 +494,14 @@ private fun Composer(
         error?.let {
             Surface(
                 shape = RoundedCornerShape(14.dp),
-                color = Color(0xFF7A1B1B).copy(alpha = 0.45f),
+                color = MaterialTheme.colorScheme.errorContainer,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 8.dp),
             ) {
                 Text(
                     it,
-                    color = Color(0xFFFFBDBD),
+                    color = MaterialTheme.colorScheme.onErrorContainer,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                     fontSize = 12.sp,
                 )
@@ -530,7 +509,7 @@ private fun Composer(
         }
         Surface(
             shape = RoundedCornerShape(28.dp),
-            color = Color.White.copy(alpha = 0.06f),
+            color = MaterialTheme.colorScheme.surfaceVariant,
             modifier = Modifier.fillMaxWidth(),
         ) {
             Row(
@@ -543,7 +522,7 @@ private fun Composer(
                     listening = liveMode || listening || speaking,
                     onClick = onToggleLive,
                 )
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.size(8.dp))
                 if (liveMode) {
                     Text(
                         text = when {
@@ -551,7 +530,7 @@ private fun Composer(
                             listening -> "Listening. Tap stop to exit."
                             else -> "Voice mode. Tap stop to exit."
                         },
-                        color = Color.White.copy(alpha = 0.65f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 14.sp,
                         modifier = Modifier
                             .weight(1f)
@@ -561,7 +540,10 @@ private fun Composer(
                     BasicTextField(
                         value = input,
                         onValueChange = onInputChanged,
-                        textStyle = TextStyle(color = Color.White, fontSize = 15.sp),
+                        textStyle = TextStyle(
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = 15.sp,
+                        ),
                         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                         maxLines = 5,
                         modifier = Modifier
@@ -571,14 +553,14 @@ private fun Composer(
                             if (input.isEmpty()) {
                                 Text(
                                     "Ask or tell Jarvis…",
-                                    color = Color.White.copy(alpha = 0.4f),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     fontSize = 15.sp,
                                 )
                             }
                             inner()
                         },
                     )
-                    Spacer(Modifier.width(4.dp))
+                    Spacer(Modifier.size(4.dp))
                     SendButton(
                         enabled = input.isNotBlank() && !thinking,
                         onClick = onSend,
@@ -602,6 +584,7 @@ private fun VoiceWaveform(amplitude: Float, listening: Boolean, tall: Boolean = 
         targetValue = if (listening) amplitude.coerceAtLeast(0.12f) else 0f,
         label = "voice-amp",
     )
+    val barColor = MaterialTheme.colorScheme.primary
     Canvas(
         modifier = Modifier.size(
             width = if (tall) 56.dp else 40.dp,
@@ -616,7 +599,7 @@ private fun VoiceWaveform(amplitude: Float, listening: Boolean, tall: Boolean = 
             val x = i * 2f * w
             val top = (size.height - h) / 2f
             drawRoundRect(
-                color = Color(0xFF9DB8FF),
+                color = barColor,
                 topLeft = Offset(x, top),
                 size = androidx.compose.ui.geometry.Size(w, h),
                 cornerRadius = androidx.compose.ui.geometry.CornerRadius(2.dp.toPx()),
@@ -627,7 +610,8 @@ private fun VoiceWaveform(amplitude: Float, listening: Boolean, tall: Boolean = 
 
 @Composable
 private fun LiveMicButton(listening: Boolean, onClick: () -> Unit) {
-    val color = if (listening) Color(0xFFFF6E6E) else Color.White.copy(alpha = 0.15f)
+    val color = if (listening) MaterialTheme.colorScheme.error
+    else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.12f)
     FilledIconButton(
         onClick = onClick,
         colors = IconButtonDefaults.filledIconButtonColors(containerColor = color),
@@ -636,7 +620,8 @@ private fun LiveMicButton(listening: Boolean, onClick: () -> Unit) {
         Icon(
             imageVector = if (listening) Icons.Rounded.Stop else Icons.Rounded.Mic,
             contentDescription = if (listening) "Stop voice" else "Start live voice",
-            tint = Color.White,
+            tint = if (listening) MaterialTheme.colorScheme.onError
+            else MaterialTheme.colorScheme.onBackground,
             modifier = Modifier.size(22.dp),
         )
     }
@@ -644,22 +629,23 @@ private fun LiveMicButton(listening: Boolean, onClick: () -> Unit) {
 
 @Composable
 private fun SendButton(enabled: Boolean, onClick: () -> Unit) {
-    val bg = if (enabled) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.08f)
+    val bg = if (enabled) MaterialTheme.colorScheme.primary
+    else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.08f)
     FilledIconButton(
         onClick = onClick,
         enabled = enabled,
         colors = IconButtonDefaults.filledIconButtonColors(
             containerColor = bg,
-            disabledContainerColor = Color.White.copy(alpha = 0.08f),
+            disabledContainerColor = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.08f),
         ),
         modifier = Modifier.size(44.dp),
     ) {
         Icon(
             Icons.AutoMirrored.Rounded.Send,
             contentDescription = "Send",
-            tint = Color.White,
+            tint = if (enabled) MaterialTheme.colorScheme.onPrimary
+            else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
             modifier = Modifier.size(20.dp),
         )
     }
 }
-

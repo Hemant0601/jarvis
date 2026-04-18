@@ -66,7 +66,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
         Text("Models", style = MaterialTheme.typography.titleMedium)
 
         ModelRow(
-            name = "Gemma 4 E2B (on-device)",
+            name = "Gemma 3 1B INT4 (on-device)",
             status = state.gemmaStatus,
             progress = state.gemmaDownloadProgress,
             onDownload = viewModel::downloadGemma,
