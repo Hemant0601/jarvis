@@ -26,7 +26,12 @@ class GraphRagRetriever @Inject constructor(
     suspend fun describeNode(id: String): NodeCard? =
         dao.node(id)?.let { NodeCard(it.id, it.label, it.category) }
 
-    suspend fun retrieve(query: String, topK: Int = 8, hops: Int = 2): RetrievalContext {
+    suspend fun retrieve(
+        query: String,
+        topK: Int = 8,
+        hops: Int = 2,
+        excludeNodeId: String? = null,
+    ): RetrievalContext {
         val q = embeddings.embed(query)
         val chunkEmbeds = dao.embeddings("chunk")
         if (chunkEmbeds.isEmpty()) return RetrievalContext(query, emptyList(), emptyList())
@@ -39,8 +44,10 @@ class GraphRagRetriever @Inject constructor(
             .take(topK * 3)
             .toMap()
 
-        // 2. Resolve seed chunks → seed node IDs.
+        // 2. Resolve seed chunks → seed node IDs (drop the excluded node — typically
+        // the one the caller just ingested, to avoid echoing it back).
         val seedChunks = dao.chunksByIds(rankedByChunkId.keys.toList())
+            .filter { it.nodeId != excludeNodeId }
         val seedNodeIds = seedChunks.map { it.nodeId }.distinct()
         if (seedNodeIds.isEmpty()) return RetrievalContext(query, emptyList(), emptyList())
 
@@ -49,6 +56,7 @@ class GraphRagRetriever @Inject constructor(
 
         // 4. Pull every chunk for the expanded set, score, trim.
         val allChunks = dao.chunksFor(distance.keys.toList())
+            .filter { it.nodeId != excludeNodeId }
         val results = allChunks
             .map { c ->
                 val base = rankedByChunkId[c.id] ?: 0f

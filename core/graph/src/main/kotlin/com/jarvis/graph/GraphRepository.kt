@@ -13,7 +13,23 @@ import kotlinx.coroutines.Dispatchers
 @Singleton
 class GraphRepository @Inject constructor(
     private val dao: GraphDao,
+    private val seed: SeedData,
 ) {
+    /**
+     * Wipes every memory from the database. After clearing, ensures a fresh
+     * Jarvis root node exists so the Brain view stays non-empty.
+     */
+    suspend fun clearAll() {
+        dao.deleteAllEdges()
+        dao.deleteAllChunks()
+        dao.deleteAllEmbeddings()
+        dao.deleteAllCaptures()
+        dao.deleteAllMessages()
+        dao.deleteAllNodes()
+        seed.reset()
+        seed.ensureRoot()
+    }
+
     /**
      * Hot flow of graph snapshots. Emits whenever the node count changes (new
      * capture saved, seed completed, etc.). Each emission re-reads the current

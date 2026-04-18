@@ -114,6 +114,70 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
             Text("Biometric unlock", modifier = Modifier.weight(1f))
             Switch(checked = state.biometricEnabled, onCheckedChange = viewModel::setBiometric)
         }
+
+        HorizontalDivider()
+        DangerZone(onNuke = viewModel::nukeMemories)
+    }
+}
+
+@Composable
+private fun DangerZone(onNuke: () -> Unit) {
+    val showConfirm = androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf(false)
+    }
+    Column {
+        Text(
+            "Danger zone",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.error,
+        )
+        Spacer(Modifier.size(6.dp))
+        Text(
+            "Clearing memories deletes every note, extracted entity, edge, chunk, " +
+                "embedding, and chat message. You'll be left with just the Jarvis root.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.size(10.dp))
+        androidx.compose.material3.OutlinedButton(
+            onClick = { showConfirm.value = true },
+            colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                contentColor = MaterialTheme.colorScheme.error,
+            ),
+            border = androidx.compose.foundation.BorderStroke(
+                1.dp,
+                MaterialTheme.colorScheme.error.copy(alpha = 0.5f),
+            ),
+        ) {
+            Text("Clear all memories")
+        }
+    }
+    if (showConfirm.value) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showConfirm.value = false },
+            title = { Text("Clear all memories?") },
+            text = {
+                Text(
+                    "This cannot be undone. Your entire graph will be wiped and " +
+                        "a fresh Jarvis root will be created.",
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(
+                    onClick = {
+                        showConfirm.value = false
+                        onNuke()
+                    },
+                ) {
+                    Text("Nuke it", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { showConfirm.value = false }) {
+                    Text("Cancel")
+                }
+            },
+        )
     }
 }
 

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.jarvis.backup.BackupManager
 import com.jarvis.backup.GoogleAuthController
+import com.jarvis.graph.GraphRepository
 import com.jarvis.llm.GemmaClient
 import com.jarvis.llm.ModelCatalog
 import com.jarvis.llm.ModelKind
@@ -35,6 +36,7 @@ class SettingsViewModel @Inject constructor(
     private val gemma: GemmaClient,
     private val auth: GoogleAuthController,
     private val backup: BackupManager,
+    private val graph: GraphRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SettingsUiState())
@@ -118,5 +120,13 @@ class SettingsViewModel @Inject constructor(
     fun setBiometric(v: Boolean) {
         models.setBiometricEnabled(v)
         _state.update { it.copy(biometricEnabled = v) }
+    }
+
+    fun nukeMemories() = viewModelScope.launch {
+        runCatching { graph.clearAll() }
+            .onSuccess { _state.update { it.copy(lastErrorMessage = "All memories cleared.") } }
+            .onFailure { err ->
+                _state.update { it.copy(lastErrorMessage = "Could not clear memories: ${err.message}") }
+            }
     }
 }

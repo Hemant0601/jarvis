@@ -87,6 +87,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 fun ChatScreen(
     seedNodeId: String?,
     onBack: (() -> Unit)? = null,
+    onOpenSettings: (() -> Unit)? = null,
     viewModel: ChatViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -94,6 +95,7 @@ fun ChatScreen(
     val listState = rememberLazyListState()
 
     LaunchedEffect(seedNodeId) { if (seedNodeId != null) viewModel.seedFromNode(seedNodeId) }
+    LaunchedEffect(Unit) { viewModel.refreshSetupState() }
     LaunchedEffect(state.messages.size) {
         if (state.messages.isNotEmpty()) listState.animateScrollToItem(state.messages.lastIndex)
     }
@@ -119,7 +121,20 @@ fun ChatScreen(
                 onBack = onBack,
             )
 
-            if (state.messages.isEmpty()) {
+            if (state.needsSetup && onOpenSettings != null) {
+                SetupCard(onOpenSettings = onOpenSettings, onDismiss = viewModel::dismissSetup)
+            }
+
+            if (state.liveMode) {
+                LiveVoiceBanner(
+                    speaking = state.speaking,
+                    listening = state.listening,
+                    partial = state.voicePartial,
+                    amplitude = state.voiceAmplitude,
+                )
+            }
+
+            if (state.messages.isEmpty() && !state.liveMode) {
                 EmptyState(Modifier.weight(1f))
             } else {
                 LazyColumn(
@@ -140,9 +155,9 @@ fun ChatScreen(
 
             Composer(
                 input = state.input,
+                liveMode = state.liveMode,
                 listening = state.listening,
-                voiceAmplitude = state.voiceAmplitude,
-                voicePartial = state.voicePartial,
+                speaking = state.speaking,
                 thinking = state.thinking,
                 error = state.errorMessage,
                 onInputChanged = viewModel::onInputChanged,
@@ -155,6 +170,102 @@ fun ChatScreen(
                     else micLauncher.launch(Manifest.permission.RECORD_AUDIO)
                 },
             )
+        }
+    }
+}
+
+@Composable
+private fun SetupCard(onOpenSettings: () -> Unit, onDismiss: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = Color(0xFF172236),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Rounded.AutoAwesome,
+                    contentDescription = null,
+                    tint = Color(0xFF9DB8FF),
+                    modifier = Modifier.size(20.dp),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "Finish setting up Jarvis",
+                    color = Color.White,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Pick a brain before chatting: download Gemma 4 for fully on-device " +
+                    "answers, or paste an OpenRouter key to use the cloud.",
+                color = Color.White.copy(alpha = 0.7f),
+                fontSize = 13.sp,
+            )
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                androidx.compose.material3.FilledTonalButton(onClick = onOpenSettings) {
+                    Text("Open Settings")
+                }
+                androidx.compose.material3.TextButton(onClick = onDismiss) {
+                    Text("Later", color = Color.White.copy(alpha = 0.6f))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LiveVoiceBanner(
+    speaking: Boolean,
+    listening: Boolean,
+    partial: String,
+    amplitude: Float,
+) {
+    val status = when {
+        speaking -> "Jarvis is speaking…"
+        listening -> "Listening — speak when ready"
+        else -> "Connecting…"
+    }
+    val transition = rememberInfiniteTransition(label = "live")
+    val glow by transition.animateFloat(
+        initialValue = 0.25f,
+        targetValue = 0.6f,
+        animationSpec = infiniteRepeatable(tween(1200), RepeatMode.Reverse),
+        label = "live-glow",
+    )
+    Surface(
+        shape = RoundedCornerShape(24.dp),
+        color = Color(0xFF1A2A4E).copy(alpha = 0.7f + glow * 0.2f),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                VoiceWaveform(
+                    amplitude = if (speaking) 0.6f else amplitude,
+                    listening = listening || speaking,
+                    tall = true,
+                )
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    status,
+                    color = Color(0xFFC7D4F5),
+                    fontWeight = FontWeight.Medium,
+                )
+            }
+            if (partial.isNotBlank()) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "\u201C$partial\u201D",
+                    color = Color.White.copy(alpha = 0.85f),
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+            }
         }
     }
 }
@@ -386,9 +497,9 @@ private fun ThinkingBubble() {
 @Composable
 private fun Composer(
     input: String,
+    liveMode: Boolean,
     listening: Boolean,
-    voiceAmplitude: Float,
-    voicePartial: String,
+    speaking: Boolean,
     thinking: Boolean,
     error: String?,
     onInputChanged: (String) -> Unit,
@@ -400,28 +511,6 @@ private fun Composer(
             .fillMaxWidth()
             .padding(start = 12.dp, end = 12.dp, bottom = 12.dp, top = 6.dp),
     ) {
-        AnimatedVisibility(visible = listening || voicePartial.isNotBlank(), enter = fadeIn(), exit = fadeOut()) {
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = Color(0xFF2E5AFB).copy(alpha = 0.12f),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp),
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    VoiceWaveform(amplitude = voiceAmplitude, listening = listening)
-                    Spacer(Modifier.width(10.dp))
-                    Text(
-                        text = voicePartial.ifBlank { "Listening…" },
-                        color = Color.White.copy(alpha = 0.9f),
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
-            }
-        }
         error?.let {
             Surface(
                 shape = RoundedCornerShape(14.dp),
@@ -450,45 +539,57 @@ private fun Composer(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 LiveMicButton(
-                    listening = listening,
+                    listening = liveMode || listening || speaking,
                     onClick = onToggleLive,
                 )
                 Spacer(Modifier.width(8.dp))
-                BasicTextField(
-                    value = input,
-                    onValueChange = onInputChanged,
-                    textStyle = TextStyle(
-                        color = Color.White,
-                        fontSize = 15.sp,
-                    ),
-                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                    maxLines = 5,
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(vertical = 10.dp),
-                    decorationBox = { inner ->
-                        if (input.isEmpty()) {
-                            Text(
-                                "Ask or tell Jarvis…",
-                                color = Color.White.copy(alpha = 0.4f),
-                                fontSize = 15.sp,
-                            )
-                        }
-                        inner()
-                    },
-                )
-                Spacer(Modifier.width(4.dp))
-                SendButton(
-                    enabled = input.isNotBlank() && !thinking,
-                    onClick = onSend,
-                )
+                if (liveMode) {
+                    Text(
+                        text = when {
+                            speaking -> "Jarvis is speaking."
+                            listening -> "Listening. Tap stop to exit."
+                            else -> "Voice mode. Tap stop to exit."
+                        },
+                        color = Color.White.copy(alpha = 0.65f),
+                        fontSize = 14.sp,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(vertical = 12.dp),
+                    )
+                } else {
+                    BasicTextField(
+                        value = input,
+                        onValueChange = onInputChanged,
+                        textStyle = TextStyle(color = Color.White, fontSize = 15.sp),
+                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                        maxLines = 5,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(vertical = 10.dp),
+                        decorationBox = { inner ->
+                            if (input.isEmpty()) {
+                                Text(
+                                    "Ask or tell Jarvis…",
+                                    color = Color.White.copy(alpha = 0.4f),
+                                    fontSize = 15.sp,
+                                )
+                            }
+                            inner()
+                        },
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    SendButton(
+                        enabled = input.isNotBlank() && !thinking,
+                        onClick = onSend,
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-private fun VoiceWaveform(amplitude: Float, listening: Boolean) {
+private fun VoiceWaveform(amplitude: Float, listening: Boolean, tall: Boolean = false) {
     val transition = rememberInfiniteTransition(label = "wave")
     val drift by transition.animateFloat(
         initialValue = 0f,
@@ -497,14 +598,16 @@ private fun VoiceWaveform(amplitude: Float, listening: Boolean) {
         label = "wave-drift",
     )
     val animatedAmp by animateFloatAsState(
-        targetValue = if (listening) amplitude.coerceAtLeast(0.1f) else 0f,
+        targetValue = if (listening) amplitude.coerceAtLeast(0.12f) else 0f,
         label = "voice-amp",
     )
     Canvas(
-        modifier = Modifier
-            .size(width = 40.dp, height = 22.dp),
+        modifier = Modifier.size(
+            width = if (tall) 56.dp else 40.dp,
+            height = if (tall) 36.dp else 22.dp,
+        ),
     ) {
-        val bars = 5
+        val bars = if (tall) 7 else 5
         val w = size.width / (bars * 2 - 1)
         repeat(bars) { i ->
             val phase = (drift + i * 0.2f) % 1f

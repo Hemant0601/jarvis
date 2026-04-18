@@ -3,6 +3,7 @@ package com.jarvis.ui.chat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.jarvis.audio.SpeechRecognitionClient
+import com.jarvis.audio.TtsClient
 import com.jarvis.graph.GraphRagRetriever
 import com.jarvis.graph.IngestPipeline
 import com.jarvis.graph.LlmRouter
@@ -29,11 +30,18 @@ data class ChatUiState(
     val input: String = "",
     val useCloud: Boolean = false,
     val thinking: Boolean = false,
+    /** In live-voice mode: auto-send user utterances, TTS each reply, auto-relisten. */
+    val liveMode: Boolean = false,
+    /** Microphone currently open and capturing. */
     val listening: Boolean = false,
+    /** Jarvis currently speaking the reply aloud. */
+    val speaking: Boolean = false,
     val voiceAmplitude: Float = 0f,
     val voicePartial: String = "",
     val errorMessage: String? = null,
     val focusNodeId: String? = null,
+    /** True if no on-device Gemma AND no OpenRouter key — triggers the setup card. */
+    val needsSetup: Boolean = false,
 )
 
 @HiltViewModel
@@ -42,10 +50,17 @@ class ChatViewModel @Inject constructor(
     private val llm: LlmRouter,
     private val ingest: IngestPipeline,
     private val speech: SpeechRecognitionClient,
+    private val tts: TtsClient,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ChatUiState())
     val state: StateFlow<ChatUiState> = _state.asStateFlow()
+
+    init { refreshSetupState() }
+
+    fun refreshSetupState() {
+        _state.update { it.copy(needsSetup = !llm.hasModel()) }
+    }
 
     fun onInputChanged(v: String) = _state.update { it.copy(input = v, errorMessage = null) }
     fun setUseCloud(enabled: Boolean) = _state.update { it.copy(useCloud = enabled) }
@@ -55,13 +70,15 @@ class ChatViewModel @Inject constructor(
         _state.update { it.copy(title = node.label, focusNodeId = nodeId) }
     }
 
+    // ---- Text / tap-send path -----------------------------------------------
+
     fun send() = viewModelScope.launch {
         val text = _state.value.input.trim()
         if (text.isEmpty()) return@launch
+        respondTo(text)
+    }
 
-        // Stop any live-voice session before committing.
-        if (_state.value.listening) stopLiveVoice()
-
+    private suspend fun respondTo(text: String) {
         _state.update {
             it.copy(
                 input = "",
@@ -72,11 +89,11 @@ class ChatViewModel @Inject constructor(
             )
         }
 
-        // Every user message is a memory — ingest first so retrieval can see it.
-        runCatching { ingest.ingestText(text) }
-            .onFailure { Timber.w(it, "ingest failed for user message") }
+        val newNodeId = runCatching { ingest.ingestText(text) }
+            .onFailure { Timber.w(it, "ingest failed") }
+            .getOrNull()
 
-        val context = runCatching { retriever.retrieve(text) }.getOrNull()
+        val context = runCatching { retriever.retrieve(text, excludeNodeId = newNodeId) }.getOrNull()
         val answer = runCatching {
             if (context != null) {
                 llm.answer(
@@ -84,14 +101,12 @@ class ChatViewModel @Inject constructor(
                     context = context,
                     preferCloud = _state.value.useCloud,
                 )
-            } else {
-                "Saved that as a memory."
-            }
+            } else "Got it."
         }.getOrElse { err ->
-            "Saved that as a memory. (Couldn't generate a reply: ${err.message})"
+            "Saved that. (Couldn't generate a reply: ${err.message})"
         }
 
-        val cites = context?.chunks?.take(3)?.map { it.nodeLabel }.orEmpty()
+        val cites = context?.chunks?.take(3)?.map { it.nodeLabel.take(40) }.orEmpty()
         _state.update {
             it.copy(
                 thinking = false,
@@ -102,55 +117,98 @@ class ChatViewModel @Inject constructor(
                 ),
             )
         }
+
+        // In live mode, speak the reply and then relisten.
+        if (_state.value.liveMode) speakAndRelisten(answer)
     }
+
+    // ---- Live-voice conversation loop ---------------------------------------
 
     fun toggleLiveVoice() {
-        if (_state.value.listening) viewModelScope.launch { stopLiveVoice() }
-        else startLiveVoice()
+        if (_state.value.liveMode) exitLiveMode() else enterLiveMode()
     }
 
-    private fun startLiveVoice() {
+    private fun enterLiveMode() {
         if (!speech.hasMicPermission()) {
             _state.update { it.copy(errorMessage = "Microphone permission not granted.") }
             return
         }
         if (!speech.isAvailable()) {
-            _state.update { it.copy(errorMessage = "Voice recognition unavailable on this device. Install Google Speech Services.") }
+            _state.update { it.copy(errorMessage = "Voice recognition unavailable. Install Google Speech Services.") }
             return
         }
-        _state.update { it.copy(listening = true, voicePartial = "", errorMessage = null) }
+        _state.update { it.copy(liveMode = true, errorMessage = null) }
+        startListening()
+    }
+
+    private fun exitLiveMode() {
+        _state.update {
+            it.copy(
+                liveMode = false,
+                listening = false,
+                speaking = false,
+                voiceAmplitude = 0f,
+                voicePartial = "",
+            )
+        }
+        viewModelScope.launch {
+            runCatching { speech.stop() }
+            runCatching { tts.stop() }
+        }
+    }
+
+    private fun startListening() {
+        if (!_state.value.liveMode) return
+        _state.update { it.copy(listening = true, voicePartial = "") }
         viewModelScope.launch {
             speech.start(
                 onAmplitude = { amp -> _state.update { it.copy(voiceAmplitude = amp) } },
-                onPartial = { partial ->
-                    _state.update { it.copy(voicePartial = partial) }
-                },
-                onFinal = { finalText ->
-                    _state.update {
-                        it.copy(
-                            listening = false,
-                            voicePartial = "",
-                            voiceAmplitude = 0f,
-                            input = if (it.input.isBlank()) finalText else "${it.input} $finalText".trim(),
-                        )
-                    }
-                },
-                onError = { msg ->
-                    _state.update {
-                        it.copy(
-                            listening = false,
-                            voiceAmplitude = 0f,
-                            voicePartial = "",
-                            errorMessage = msg,
-                        )
-                    }
-                },
+                onPartial = { p -> _state.update { it.copy(voicePartial = p) } },
+                onFinal = { finalText -> onVoiceFinal(finalText) },
+                onError = { msg -> onVoiceError(msg) },
             )
         }
     }
 
-    private suspend fun stopLiveVoice() {
-        speech.stop()
-        _state.update { it.copy(listening = false, voiceAmplitude = 0f) }
+    private fun onVoiceFinal(text: String) {
+        val clean = text.trim()
+        _state.update { it.copy(listening = false, voicePartial = "", voiceAmplitude = 0f) }
+        if (clean.isEmpty()) {
+            // User didn't say anything — keep the loop alive.
+            if (_state.value.liveMode) startListening()
+            return
+        }
+        viewModelScope.launch { respondTo(clean) }
     }
+
+    private fun onVoiceError(msg: String) {
+        _state.update {
+            it.copy(
+                listening = false,
+                voiceAmplitude = 0f,
+                voicePartial = "",
+                errorMessage = if (it.liveMode) null else msg,
+            )
+        }
+        // On transient errors keep the loop alive so the user doesn't have to re-tap.
+        if (_state.value.liveMode) startListening()
+    }
+
+    private fun speakAndRelisten(text: String) {
+        if (!_state.value.liveMode) return
+        _state.update { it.copy(speaking = true) }
+        viewModelScope.launch {
+            runCatching { tts.speak(text) }
+            _state.update { it.copy(speaking = false) }
+            if (_state.value.liveMode) startListening()
+        }
+    }
+
+    // ---- Setup -------------------------------------------------------------
+
+    /**
+     * Called when the user returns from Settings so the setup card can
+     * auto-dismiss if they installed Gemma or typed an OpenRouter key.
+     */
+    fun dismissSetup() { refreshSetupState() }
 }

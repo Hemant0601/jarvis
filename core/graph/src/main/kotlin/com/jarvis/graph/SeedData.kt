@@ -49,5 +49,8 @@ class SeedData @Inject constructor(
 
     fun rootId(): String? = prefs.getString(KEY_ROOT_ID, null)
 
+    /** Forget the saved root id so the next [ensureRoot] call creates a fresh one. */
+    fun reset() { prefs.edit().remove(KEY_ROOT_ID).apply() }
+
     private companion object { const val KEY_ROOT_ID = "root-id-v1" }
 }

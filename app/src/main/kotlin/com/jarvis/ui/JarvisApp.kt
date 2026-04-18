@@ -74,7 +74,10 @@ fun JarvisApp(startInCapture: Boolean = false) {
             modifier = Modifier.padding(padding),
         ) {
             composable(Dest.Chat.route) {
-                ChatScreen(seedNodeId = null)
+                ChatScreen(
+                    seedNodeId = null,
+                    onOpenSettings = { nav.navigate(Dest.Settings.route) { launchSingleTop = true } },
+                )
             }
             composable(Dest.Brain.route) {
                 GraphScreen(

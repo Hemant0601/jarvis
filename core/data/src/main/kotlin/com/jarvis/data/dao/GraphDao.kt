@@ -44,4 +44,22 @@ interface GraphDao {
 
     @Query("SELECT COUNT(*) FROM nodes")
     fun nodeCount(): Flow<Int>
+
+    @Query("DELETE FROM nodes")
+    suspend fun deleteAllNodes()
+
+    @Query("DELETE FROM edges")
+    suspend fun deleteAllEdges()
+
+    @Query("DELETE FROM chunks")
+    suspend fun deleteAllChunks()
+
+    @Query("DELETE FROM embeddings")
+    suspend fun deleteAllEmbeddings()
+
+    @Query("DELETE FROM captures")
+    suspend fun deleteAllCaptures()
+
+    @Query("DELETE FROM messages")
+    suspend fun deleteAllMessages()
 }
