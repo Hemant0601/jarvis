@@ -19,9 +19,13 @@ class LlmRouter @Inject constructor(
     private val cloud: OpenRouterClient,
     private val settings: LlmSettings,
 ) {
-    /** True when the assistant actually has a brain — Gemma loaded or OpenRouter key set. */
+    /**
+     * True when the assistant has a usable brain — either Gemma's .task file is
+     * already on disk (loads lazily at first call), or an OpenRouter key is set.
+     * Used to hide the setup card once the user has actually downloaded a model.
+     */
     fun hasModel(): Boolean =
-        gemma.isLoaded() || settings.openRouterKey().isNotBlank()
+        gemma.isReady() || settings.openRouterKey().isNotBlank()
 
     suspend fun answer(
         question: String,
@@ -45,21 +49,30 @@ class LlmRouter @Inject constructor(
     }
 
     private fun buildPrompt(question: String, ctx: RetrievalContext): String = buildString {
-        appendLine("You are Jarvis, the user's personal memory assistant.")
-        appendLine("You have access to the user's saved memories below. Use them as context, but DO NOT")
-        appendLine("list them verbatim or quote them word-for-word. Synthesise a natural, conversational reply.")
+        appendLine("You are Jarvis, the user's private second brain and thinking partner.")
+        appendLine("Two modes — detect which one the user is in from the latest input:")
         appendLine()
-        appendLine("Rules:")
-        appendLine("- Address the user directly as \"you\".")
-        appendLine("- Keep replies concise: 1-3 sentences unless the question explicitly needs more.")
-        appendLine("- If the memories don't contain what's needed, say so plainly and ask one clarifying question.")
-        appendLine("- If the user is just telling you something (statement, not question), acknowledge briefly in one sentence.")
-        appendLine("- Never prefix your answer with \"From your memory\" or bullet lists.")
+        appendLine("  NOTE MODE — they are telling you something to remember. You have already")
+        appendLine("  stored it. Acknowledge in one short sentence, then add ONE sharp observation,")
+        appendLine("  connection to an earlier memory, question, or next step. Example:")
+        appendLine("    User: \"Coffee with Sarah Tuesday — she's interested in the Hadoop migration.\"")
+        appendLine("    Jarvis: \"Got it. Sarah's also the third person this month asking about Hadoop — maybe worth a public update.\"")
+        appendLine()
+        appendLine("  QUESTION MODE — they are asking you something. Use the memories below as")
+        appendLine("  context, synthesise an answer in your own words, and add a brief analytical")
+        appendLine("  take (a pattern you notice, a caveat, or a suggestion). Never quote memories")
+        appendLine("  verbatim, never write numbered lists of them, never prefix with \"From your memory\".")
+        appendLine()
+        appendLine("Always:")
+        appendLine("- Address the user as \"you\".")
+        appendLine("- Keep replies tight: 1–3 sentences unless the question explicitly asks for depth.")
+        appendLine("- If you don't have enough memory, say so plainly and ask ONE clarifying question.")
+        appendLine("- Never echo their exact words back at them.")
         appendLine()
         if (ctx.chunks.isEmpty()) {
-            appendLine("Memories: (none retrieved — the user has nothing relevant saved yet.)")
+            appendLine("Memories (context): none relevant retrieved.")
         } else {
-            appendLine("Memories (context only, don't quote):")
+            appendLine("Memories (context — for reference only, don't quote):")
             ctx.chunks.take(5).forEach { c -> appendLine("- ${c.nodeLabel}: ${c.text.take(220)}") }
         }
         appendLine()

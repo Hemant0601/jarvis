@@ -107,12 +107,13 @@ fun ChatScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                brush = Brush.verticalGradient(
-                    colors = listOf(Color(0xFF0B0F17), Color(0xFF060912)),
-                ),
-            ),
+            .background(com.jarvis.ui.theme.LocalJarvisGradient.current.background),
     ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(com.jarvis.ui.theme.LocalJarvisGradient.current.accentGlow),
+        )
         Column(Modifier.fillMaxSize()) {
             ChatTopBar(
                 title = state.title,

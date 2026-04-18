@@ -6,8 +6,10 @@ import com.jarvis.backup.BackupManager
 import com.jarvis.backup.GoogleAuthController
 import com.jarvis.graph.GraphRepository
 import com.jarvis.llm.GemmaClient
+import com.jarvis.llm.LlmSettings
 import com.jarvis.llm.ModelCatalog
 import com.jarvis.llm.ModelKind
+import com.jarvis.llm.ThemeMode
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,6 +22,9 @@ import timber.log.Timber
 data class SettingsUiState(
     val gemmaStatus: String = "Not installed",
     val gemmaDownloadProgress: Float? = null,
+    val gemmaLoadedLabel: String = "Not loaded",
+    val gemmaVerifying: Boolean = false,
+    val gemmaVerifyResult: String? = null,
     val embeddingStatus: String = "Not installed",
     val embeddingDownloadProgress: Float? = null,
     val openRouterKey: String = "",
@@ -27,6 +32,7 @@ data class SettingsUiState(
     val googleAccount: String? = null,
     val lastBackupSummary: String = "No backups yet.",
     val biometricEnabled: Boolean = false,
+    val themeMode: com.jarvis.llm.ThemeMode = com.jarvis.llm.ThemeMode.DARK,
     val lastErrorMessage: String? = null,
 )
 
@@ -37,6 +43,7 @@ class SettingsViewModel @Inject constructor(
     private val auth: GoogleAuthController,
     private val backup: BackupManager,
     private val graph: GraphRepository,
+    private val llmSettings: LlmSettings,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SettingsUiState())
@@ -48,13 +55,43 @@ class SettingsViewModel @Inject constructor(
         _state.update {
             it.copy(
                 gemmaStatus = models.statusOf(ModelKind.Gemma),
+                gemmaLoadedLabel = when {
+                    gemma.isLoaded() -> "Loaded · ready to answer"
+                    gemma.isInstalled() -> "Installed · will load on first use"
+                    else -> "Not installed"
+                },
                 embeddingStatus = models.statusOf(ModelKind.Embedding),
                 openRouterKey = models.openRouterKey(),
                 autoBackupEnabled = backup.autoBackupEnabled(),
                 googleAccount = auth.currentAccountEmail(),
                 lastBackupSummary = backup.lastBackupSummary(),
                 biometricEnabled = models.biometricEnabled(),
+                themeMode = llmSettings.themeMode(),
             )
+        }
+    }
+
+    fun setThemeMode(mode: ThemeMode) {
+        llmSettings.setThemeMode(mode)
+        _state.update { it.copy(themeMode = mode) }
+    }
+
+    fun verifyGemma() {
+        _state.update { it.copy(gemmaVerifying = true, gemmaVerifyResult = null) }
+        viewModelScope.launch {
+            val result = runCatching { gemma.verify() }
+                .getOrElse { err -> "Failed: ${err.message ?: err.javaClass.simpleName}" }
+            _state.update {
+                it.copy(
+                    gemmaVerifying = false,
+                    gemmaVerifyResult = result,
+                    gemmaLoadedLabel = when {
+                        gemma.isLoaded() -> "Loaded · ready to answer"
+                        gemma.isInstalled() -> "Installed · load failed"
+                        else -> "Not installed"
+                    },
+                )
+            }
         }
     }
 

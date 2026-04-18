@@ -10,25 +10,33 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import com.jarvis.llm.LlmSettings
+import com.jarvis.llm.ThemeMode
 import com.jarvis.ui.JarvisApp
 import com.jarvis.ui.theme.JarvisTheme
 import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    @Inject lateinit var llmSettings: LlmSettings
+
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val previousCrash = CrashReporter.readAndClear(applicationContext)
         setContent {
-            JarvisTheme {
+            val mode by llmSettings.themeModeFlow().collectAsState(initial = ThemeMode.DARK)
+            JarvisTheme(mode = mode) {
                 var showCrash by remember { mutableStateOf(previousCrash != null) }
                 JarvisApp(startInCapture = intent?.action == "com.jarvis.action.CAPTURE")
                 if (showCrash && previousCrash != null) {

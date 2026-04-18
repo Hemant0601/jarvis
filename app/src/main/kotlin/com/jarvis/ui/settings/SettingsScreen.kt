@@ -1,5 +1,6 @@
 package com.jarvis.ui.settings
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -39,6 +40,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(com.jarvis.ui.theme.LocalJarvisGradient.current.background)
             .verticalScroll(rememberScrollState())
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp),
@@ -69,6 +71,32 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
             progress = state.gemmaDownloadProgress,
             onDownload = viewModel::downloadGemma,
             onRemove = viewModel::removeGemma,
+            extraContent = {
+                Column {
+                    Text(
+                        state.gemmaLoadedLabel,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    state.gemmaVerifyResult?.let { result ->
+                        Spacer(Modifier.size(4.dp))
+                        Text(
+                            "Jarvis says: $result",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Spacer(Modifier.size(6.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        androidx.compose.material3.OutlinedButton(
+                            onClick = viewModel::verifyGemma,
+                            enabled = !state.gemmaVerifying,
+                        ) {
+                            Text(if (state.gemmaVerifying) "Testing…" else "Verify it works")
+                        }
+                    }
+                }
+            },
         )
         ModelRow(
             name = "Embedding model (ONNX)",
@@ -76,6 +104,13 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
             progress = state.embeddingDownloadProgress,
             onDownload = viewModel::downloadEmbedding,
             onRemove = viewModel::removeEmbedding,
+        )
+
+        HorizontalDivider()
+        Text("Appearance", style = MaterialTheme.typography.titleMedium)
+        ThemePicker(
+            current = state.themeMode,
+            onPick = viewModel::setThemeMode,
         )
 
         HorizontalDivider()
@@ -117,6 +152,34 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
 
         HorizontalDivider()
         DangerZone(onNuke = viewModel::nukeMemories)
+    }
+}
+
+@Composable
+private fun ThemePicker(current: com.jarvis.llm.ThemeMode, onPick: (com.jarvis.llm.ThemeMode) -> Unit) {
+    val options = listOf(
+        com.jarvis.llm.ThemeMode.AUTO to "Auto",
+        com.jarvis.llm.ThemeMode.LIGHT to "Light",
+        com.jarvis.llm.ThemeMode.DARK to "Dark",
+    )
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        options.forEach { (mode, label) ->
+            val selected = current == mode
+            if (selected) {
+                androidx.compose.material3.Button(
+                    onClick = { onPick(mode) },
+                    modifier = Modifier.weight(1f),
+                ) { Text(label) }
+            } else {
+                OutlinedButton(
+                    onClick = { onPick(mode) },
+                    modifier = Modifier.weight(1f),
+                ) { Text(label) }
+            }
+        }
     }
 }
 
@@ -188,6 +251,7 @@ private fun ModelRow(
     progress: Float?,
     onDownload: () -> Unit,
     onRemove: () -> Unit,
+    extraContent: (@Composable () -> Unit)? = null,
 ) {
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -204,6 +268,10 @@ private fun ModelRow(
         if (progress != null) {
             Spacer(Modifier.size(6.dp))
             LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+        }
+        if (extraContent != null) {
+            Spacer(Modifier.size(8.dp))
+            extraContent()
         }
     }
 }
