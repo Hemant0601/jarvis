@@ -7,6 +7,7 @@ import com.jarvis.audio.TtsClient
 import com.jarvis.graph.GraphRagRetriever
 import com.jarvis.graph.IngestPipeline
 import com.jarvis.graph.LlmRouter
+import com.jarvis.llm.LlmSettings
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.util.UUID
 import javax.inject.Inject
@@ -51,6 +52,7 @@ class ChatViewModel @Inject constructor(
     private val ingest: IngestPipeline,
     private val speech: SpeechRecognitionClient,
     private val tts: TtsClient,
+    private val llmSettings: LlmSettings,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ChatUiState())
@@ -75,7 +77,63 @@ class ChatViewModel @Inject constructor(
     fun send() = viewModelScope.launch {
         val text = _state.value.input.trim()
         if (text.isEmpty()) return@launch
+        if (handleSlashCommand(text)) return@launch
         respondTo(text)
+    }
+
+    /**
+     * Intercepts /-prefixed commands without ingesting them as memories.
+     * Returns true if handled so send() short-circuits.
+     */
+    private fun handleSlashCommand(text: String): Boolean {
+        val lower = text.lowercase()
+        when {
+            lower == "/help" || lower == "/commands" -> {
+                appendSystem(
+                    text,
+                    "Commands:\n" +
+                        "• /persona <instructions> — tell me how to behave from now on\n" +
+                        "• /persona clear — reset to default persona\n" +
+                        "• /persona show — print the current persona",
+                )
+                return true
+            }
+            lower.startsWith("/persona ") -> {
+                val arg = text.substringAfter("/persona ").trim()
+                when (arg.lowercase()) {
+                    "clear", "reset", "default" -> {
+                        llmSettings.setPersona("")
+                        appendSystem(text, "Persona cleared. Back to the default Jarvis behaviour.")
+                    }
+                    "show", "what", "?" -> {
+                        val current = llmSettings.persona()
+                        val body = if (current.isBlank()) "No custom persona set." else "Current persona:\n$current"
+                        appendSystem(text, body)
+                    }
+                    else -> {
+                        llmSettings.setPersona(arg)
+                        appendSystem(text, "Got it — from now on I'll follow this: \"${arg.take(160)}\".")
+                    }
+                }
+                return true
+            }
+            lower == "/persona" -> {
+                appendSystem(text, "Usage: /persona <your instructions>  (or: /persona clear, /persona show)")
+                return true
+            }
+        }
+        return false
+    }
+
+    private fun appendSystem(userText: String, reply: String) {
+        _state.update {
+            it.copy(
+                input = "",
+                messages = it.messages +
+                    ChatMessageUi(fromUser = true, text = userText) +
+                    ChatMessageUi(fromUser = false, text = reply),
+            )
+        }
     }
 
     private suspend fun respondTo(text: String) {

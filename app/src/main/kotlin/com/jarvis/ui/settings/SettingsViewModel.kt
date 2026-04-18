@@ -34,6 +34,7 @@ data class SettingsUiState(
     val lastBackupSummary: String = "No backups yet.",
     val biometricEnabled: Boolean = false,
     val themeMode: com.jarvis.llm.ThemeMode = com.jarvis.llm.ThemeMode.DARK,
+    val persona: String = "",
     val lastErrorMessage: String? = null,
 )
 
@@ -68,6 +69,7 @@ class SettingsViewModel @Inject constructor(
                 lastBackupSummary = backup.lastBackupSummary(),
                 biometricEnabled = models.biometricEnabled(),
                 themeMode = llmSettings.themeMode(),
+                persona = llmSettings.persona(),
             )
         }
     }
@@ -75,6 +77,11 @@ class SettingsViewModel @Inject constructor(
     fun setThemeMode(mode: ThemeMode) {
         llmSettings.setThemeMode(mode)
         _state.update { it.copy(themeMode = mode) }
+    }
+
+    fun setPersona(text: String) {
+        llmSettings.setPersona(text)
+        _state.update { it.copy(persona = text) }
     }
 
     fun verifyGemma() {

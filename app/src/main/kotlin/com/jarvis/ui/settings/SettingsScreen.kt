@@ -132,6 +132,37 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
             onDownload = viewModel::downloadEmbedding,
             onImport = { importEmbeddingLauncher.launch(arrayOf("*/*")) },
             onRemove = viewModel::removeEmbedding,
+            extraContent = {
+                Text(
+                    "Current retrieval uses a simple hash-based embedding so it works with zero " +
+                        "downloads. Downloading the ONNX model is optional — tokenizer wiring " +
+                        "for semantic search is coming in a follow-up release.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            },
+        )
+
+        HorizontalDivider()
+        Text("Persona", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "Tell Jarvis how to behave. Prepended to every prompt. You can also " +
+                "set this inline from chat with /persona <instructions>.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        OutlinedTextField(
+            value = state.persona,
+            onValueChange = viewModel::setPersona,
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = {
+                Text(
+                    "e.g. \"Speak concisely. Focus on my work calendar. " +
+                        "Always suggest one concrete next step.\"",
+                )
+            },
+            minLines = 3,
+            maxLines = 6,
         )
 
         HorizontalDivider()

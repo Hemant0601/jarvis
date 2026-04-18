@@ -28,6 +28,9 @@ class LlmSettings @Inject constructor(
     fun openRouterKey(): String = prefs.getString(OPENROUTER, "").orEmpty()
     fun setOpenRouterKey(value: String) { prefs.edit().putString(OPENROUTER, value).apply() }
 
+    fun persona(): String = prefs.getString(PERSONA, "").orEmpty()
+    fun setPersona(value: String) { prefs.edit().putString(PERSONA, value).apply() }
+
     fun biometricEnabled(): Boolean = prefs.getBoolean(BIOMETRIC, false)
     fun setBiometricEnabled(value: Boolean) { prefs.edit().putBoolean(BIOMETRIC, value).apply() }
 
@@ -51,5 +54,6 @@ class LlmSettings @Inject constructor(
         const val OPENROUTER = "openrouter.api-key"
         const val BIOMETRIC = "security.biometric"
         const val THEME = "ui.theme-mode"
+        const val PERSONA = "chat.persona"
     }
 }

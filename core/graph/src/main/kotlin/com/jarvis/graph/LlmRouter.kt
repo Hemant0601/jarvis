@@ -49,6 +49,12 @@ class LlmRouter @Inject constructor(
     }
 
     private fun buildPrompt(question: String, ctx: RetrievalContext): String = buildString {
+        val persona = settings.persona().trim()
+        if (persona.isNotEmpty()) {
+            appendLine("Additional instructions from the user (always follow these first):")
+            appendLine(persona)
+            appendLine()
+        }
         appendLine("You are Jarvis, the user's private second brain and thinking partner.")
         appendLine("Two modes — detect which one the user is in from the latest input:")
         appendLine()

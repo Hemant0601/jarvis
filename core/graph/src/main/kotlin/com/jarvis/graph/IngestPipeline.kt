@@ -14,10 +14,14 @@ import kotlinx.datetime.Clock
 
 /**
  * Ingest pipeline for every capture (text or transcribed voice):
- *   • Chunk the text.
- *   • Generate embeddings per chunk + per parent node.
- *   • Run on-device Gemma entity/relation extraction to produce extra nodes + edges.
- *   • Link the new Note node back to the Jarvis root so the brain stays connected.
+ *   • Skip conversational filler so "hi" and "hey" don't become nodes.
+ *   • Chunk the text, embed each chunk and the note.
+ *   • Run Gemma / regex entity extraction, reusing existing Topic/Person
+ *     nodes by label so the brain doesn't fill up with duplicates.
+ *   • Link every note back to the Jarvis root so the graph stays connected.
+ *
+ * Returns the id of the ingested Note node, or null if the message was
+ * deemed too trivial to store.
  */
 @Singleton
 class IngestPipeline @Inject constructor(
@@ -26,22 +30,26 @@ class IngestPipeline @Inject constructor(
     private val extractor: EntityExtractor,
     private val seed: SeedData,
 ) {
-    suspend fun ingestText(text: String, label: String? = null): String {
+    suspend fun ingestText(text: String, label: String? = null): String? {
+        val clean = text.trim()
+        if (clean.length < 12) return null
+        if (trivialChat.matches(clean)) return null
+
         val now = Clock.System.now().toEpochMilliseconds()
         val rootId = seed.ensureRoot()
         val nodeId = Ids.new()
 
         val parent = NodeEntity(
             id = nodeId,
-            label = label ?: text.take(48).substringBefore('\n').ifBlank { "Note" },
+            label = label ?: clean.take(48).substringBefore('\n').ifBlank { "Note" },
             category = "Note",
-            summary = text.take(240),
+            summary = clean.take(240),
             createdAt = now,
             updatedAt = now,
         )
         dao.upsertNode(parent)
 
-        val chunks = chunkify(text).mapIndexed { i, c ->
+        val chunks = chunkify(clean).mapIndexed { i, c ->
             ChunkEntity(
                 id = Ids.new(),
                 nodeId = nodeId,
@@ -52,7 +60,6 @@ class IngestPipeline @Inject constructor(
         }
         dao.upsertChunks(chunks)
 
-        // Node-level embedding.
         val nodeVec = embeddings.embed(parent.summary)
         dao.upsertEmbedding(
             EmbeddingEntity(
@@ -63,7 +70,6 @@ class IngestPipeline @Inject constructor(
                 model = embeddings.modelId(),
             )
         )
-        // Chunk-level embeddings.
         chunks.forEach { c ->
             val v = embeddings.embed(c.text)
             dao.upsertEmbedding(
@@ -77,8 +83,7 @@ class IngestPipeline @Inject constructor(
             )
         }
 
-        // Every Note is linked back to the Jarvis root.
-        val edgeEntities = mutableListOf(
+        val edges = mutableListOf(
             EdgeEntity(
                 fromId = rootId,
                 toId = nodeId,
@@ -88,21 +93,27 @@ class IngestPipeline @Inject constructor(
             )
         )
 
-        // Extracted entities become child nodes of the Note.
-        val extracted = extractor.extract(text)
+        val extracted = extractor.extract(clean)
         extracted.entities.forEach { e ->
-            val entId = Ids.new()
-            dao.upsertNode(
-                NodeEntity(
-                    id = entId,
-                    label = e.name.take(48),
-                    category = e.category,
-                    summary = e.description.ifBlank { e.name },
-                    createdAt = now,
-                    updatedAt = now,
+            val name = e.name.trim().take(48)
+            if (name.length < 2) return@forEach
+            // Re-use existing Topic/Person etc. by label instead of creating a
+            // new node every time the user mentions the same thing.
+            val existing = dao.findNodeByLabel(name, e.category)
+            val entId = existing?.id ?: Ids.new()
+            if (existing == null) {
+                dao.upsertNode(
+                    NodeEntity(
+                        id = entId,
+                        label = name,
+                        category = e.category,
+                        summary = e.description.ifBlank { name },
+                        createdAt = now,
+                        updatedAt = now,
+                    )
                 )
-            )
-            edgeEntities += EdgeEntity(
+            }
+            edges += EdgeEntity(
                 fromId = nodeId,
                 toId = entId,
                 kind = e.relationToSource.ifBlank { "mentions" },
@@ -110,7 +121,7 @@ class IngestPipeline @Inject constructor(
                 createdAt = now,
             )
         }
-        dao.upsertEdges(edgeEntities)
+        dao.upsertEdges(edges)
         return nodeId
     }
 
@@ -125,5 +136,13 @@ class IngestPipeline @Inject constructor(
             i = end - overlap
         }
         return out
+    }
+
+    private companion object {
+        /** Whole-message greetings / acks we don't want to store as memories. */
+        val trivialChat = Regex(
+            """^(hi|hey|hello|yo+|sup|howdy|ok|okay|cool|nice|thanks?|thx|ty|bye|cya|gn|gm|wow|lol|hmm+|nah|yes|no|yep|nope|k)\s*[!.?]*\s*${'$'}""",
+            RegexOption.IGNORE_CASE,
+        )
     }
 }

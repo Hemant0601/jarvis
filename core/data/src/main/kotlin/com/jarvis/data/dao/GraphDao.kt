@@ -33,6 +33,11 @@ interface GraphDao {
     @Query("SELECT * FROM nodes WHERE id = :id")
     suspend fun node(id: String): NodeEntity?
 
+    /** Case-insensitive lookup by label. Used by the ingest pipeline to reuse
+     * existing Topic / Person nodes instead of creating duplicates. */
+    @Query("SELECT * FROM nodes WHERE LOWER(label) = LOWER(:label) AND category = :category LIMIT 1")
+    suspend fun findNodeByLabel(label: String, category: String): NodeEntity?
+
     @Query("SELECT * FROM chunks WHERE nodeId IN (:nodeIds)")
     suspend fun chunksFor(nodeIds: List<String>): List<ChunkEntity>
 
