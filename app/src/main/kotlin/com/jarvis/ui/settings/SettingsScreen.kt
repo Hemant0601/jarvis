@@ -9,7 +9,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import com.jarvis.llm.ModelKind
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -33,8 +38,21 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 @Composable
 fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val context = LocalContext.current
     val signInLauncher = rememberLauncherForActivityResult(GoogleSignInContract()) { email ->
         viewModel.onSignInResult(email)
+    }
+    val importGemmaLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri: Uri? -> if (uri != null) viewModel.importGemma(uri) }
+    val importEmbeddingLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri: Uri? -> if (uri != null) viewModel.importEmbedding(uri) }
+
+    fun openLanding(kind: ModelKind) {
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(viewModel.landingPageUrl(kind)))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        runCatching { context.startActivity(intent) }
     }
 
     Column(
@@ -69,7 +87,9 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
             name = "Gemma 3 1B INT4 (on-device)",
             status = state.gemmaStatus,
             progress = state.gemmaDownloadProgress,
-            onDownload = viewModel::downloadGemma,
+            gated = true,
+            onGetPage = { openLanding(ModelKind.Gemma) },
+            onImport = { importGemmaLauncher.launch(arrayOf("*/*")) },
             onRemove = viewModel::removeGemma,
             extraContent = {
                 Column {
@@ -86,9 +106,15 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+                    Text(
+                        "Gemma is gated by Google. Tap \"Get model\" to open HuggingFace, accept the licence, " +
+                            "download \"gemma3-1b-it-int4.task\", then tap \"Import file\" to load it.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                     Spacer(Modifier.size(6.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        androidx.compose.material3.OutlinedButton(
+                        OutlinedButton(
                             onClick = viewModel::verifyGemma,
                             enabled = !state.gemmaVerifying,
                         ) {
@@ -102,7 +128,9 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
             name = "Embedding model (ONNX)",
             status = state.embeddingStatus,
             progress = state.embeddingDownloadProgress,
+            gated = false,
             onDownload = viewModel::downloadEmbedding,
+            onImport = { importEmbeddingLauncher.launch(arrayOf("*/*")) },
             onRemove = viewModel::removeEmbedding,
         )
 
@@ -249,25 +277,38 @@ private fun ModelRow(
     name: String,
     status: String,
     progress: Float?,
-    onDownload: () -> Unit,
+    gated: Boolean,
+    onDownload: (() -> Unit)? = null,
+    onGetPage: (() -> Unit)? = null,
+    onImport: () -> Unit,
     onRemove: () -> Unit,
     extraContent: (@Composable () -> Unit)? = null,
 ) {
     Column {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(name, style = MaterialTheme.typography.bodyLarge)
-                Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            if (progress == null) {
-                OutlinedButton(onClick = onDownload) { Text("Download") }
-                Spacer(Modifier.size(8.dp))
-                OutlinedButton(onClick = onRemove) { Text("Remove") }
-            }
+        Column {
+            Text(name, style = MaterialTheme.typography.bodyLarge)
+            Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (progress != null) {
             Spacer(Modifier.size(6.dp))
             LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.size(2.dp))
+            Text(
+                "${(progress * 100).toInt()}%",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            Spacer(Modifier.size(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (gated) {
+                    Button(onClick = { onGetPage?.invoke() }) { Text("Get model") }
+                } else {
+                    Button(onClick = { onDownload?.invoke() }) { Text("Download") }
+                }
+                OutlinedButton(onClick = onImport) { Text("Import") }
+                OutlinedButton(onClick = onRemove) { Text("Remove") }
+            }
         }
         if (extraContent != null) {
             Spacer(Modifier.size(8.dp))

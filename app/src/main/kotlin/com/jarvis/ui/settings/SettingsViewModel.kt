@@ -1,5 +1,6 @@
 package com.jarvis.ui.settings
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.jarvis.backup.BackupManager
@@ -117,6 +118,46 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun removeGemma() { models.remove(ModelKind.Gemma); refresh() }
+
+    /** Gemma 3 weights are gated; this is invoked after the user picks the .task
+     * file they downloaded from HuggingFace. */
+    fun importGemma(uri: Uri) {
+        _state.update { it.copy(gemmaDownloadProgress = 0f, lastErrorMessage = null) }
+        models.importFrom(
+            kind = ModelKind.Gemma,
+            uri = uri,
+            scope = viewModelScope,
+            onProgress = { p ->
+                _state.update { it.copy(gemmaDownloadProgress = p.takeUnless { it >= 1f }) }
+                if (p >= 1f) {
+                    runCatching { gemma.load(models.fileOf(ModelKind.Gemma)) }
+                        .onFailure { Timber.e(it, "Gemma load after import failed") }
+                    refresh()
+                }
+            },
+            onError = { msg ->
+                _state.update { it.copy(gemmaDownloadProgress = null, lastErrorMessage = "Gemma import failed: $msg") }
+            },
+        )
+    }
+
+    fun importEmbedding(uri: Uri) {
+        _state.update { it.copy(embeddingDownloadProgress = 0f, lastErrorMessage = null) }
+        models.importFrom(
+            kind = ModelKind.Embedding,
+            uri = uri,
+            scope = viewModelScope,
+            onProgress = { p ->
+                _state.update { it.copy(embeddingDownloadProgress = p.takeUnless { it >= 1f }) }
+                if (p >= 1f) refresh()
+            },
+            onError = { msg ->
+                _state.update { it.copy(embeddingDownloadProgress = null, lastErrorMessage = "Embedding import failed: $msg") }
+            },
+        )
+    }
+
+    fun landingPageUrl(kind: ModelKind): String = kind.landingPageUrl
 
     fun downloadEmbedding() {
         _state.update { it.copy(embeddingDownloadProgress = 0f, lastErrorMessage = null) }

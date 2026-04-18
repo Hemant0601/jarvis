@@ -1,6 +1,7 @@
 package com.jarvis.llm
 
 import android.content.Context
+import android.net.Uri
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import javax.inject.Inject
@@ -14,38 +15,49 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import timber.log.Timber
 
+/**
+ * @property displayName  Human-facing name in Settings.
+ * @property filename     On-disk filename we store the model under.
+ * @property approxSizeMb Used for progress fallback when Content-Length is unknown.
+ * @property downloadUrl  Direct URL we can `GET` without authentication. null when
+ *                        the model is gated (Gemma) — in that case the app opens
+ *                        [landingPageUrl] in the browser instead.
+ * @property landingPageUrl  Browser-friendly page for the user to land on, accept
+ *                        the licence, and download the model manually. Always set.
+ */
 enum class ModelKind(
     val displayName: String,
     val filename: String,
-    val downloadUrl: String,
     val approxSizeMb: Int,
+    val downloadUrl: String?,
+    val landingPageUrl: String,
 ) {
     /**
-     * Gemma 3 1B IT INT4 (.task) — the on-device model officially shipped for
-     * MediaPipe tasks-genai. Google hosts the canonical .task file on their own
-     * CDN. Gemma 4 E2B's web-format .task doesn't load with tasks-genai 0.10.21
-     * on Android (MediaPipeTasksStatus=104, "Unable to open zip archive") so we
-     * stay on Gemma 3 1B INT4 here; it's 555 MB instead of 2 GB, which also
-     * downloads much faster.
+     * Gemma 3 1B IT INT4 (.task). Weights are gated behind Google's terms on
+     * HuggingFace (and on Kaggle), so in-app auto-download returns 401/404.
+     * The app opens the HuggingFace page, user accepts terms and downloads the
+     * .task manually, then imports it via the file picker.
      */
     Gemma(
         displayName = "Gemma 3 1B INT4 (on-device)",
         filename = "gemma3-1b-it-int4.task",
-        downloadUrl = "https://storage.googleapis.com/mediapipe-models/llm/gemma3-1b-it-int4.task",
         approxSizeMb = 555,
+        downloadUrl = null,
+        landingPageUrl = "https://huggingface.co/litert-community/Gemma3-1B-IT",
     ),
+    /**
+     * Sentence-Transformers all-MiniLM-L6-v2 ONNX (384-dim embeddings).
+     * Public, not gated — direct download works.
+     */
     Embedding(
         displayName = "all-MiniLM-L6-v2 (384d)",
         filename = "all-minilm-l6-v2.onnx",
-        downloadUrl = "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/onnx/model.onnx",
         approxSizeMb = 90,
+        downloadUrl = "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/onnx/model.onnx",
+        landingPageUrl = "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2",
     ),
 }
 
-/**
- * Manages download + lifecycle of all on-device model files. Files land in the
- * app's private files dir (not visible to other apps).
- */
 @Singleton
 class ModelCatalog @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -55,8 +67,6 @@ class ModelCatalog @Inject constructor(
     private val modelsDir: File = File(context.filesDir, "models").apply { mkdirs() }
 
     init {
-        // Clean up any stale model files from older releases (e.g. the old
-        // Gemma-4 .task that doesn't load with current MediaPipe).
         val expected = ModelKind.entries.map { it.filename }.toSet()
         modelsDir.listFiles()?.forEach { f ->
             if (f.isFile && f.name !in expected) {
@@ -76,44 +86,99 @@ class ModelCatalog @Inject constructor(
         return "Installed · $mb MB"
     }
 
+    /** Kick off an auto-download if the model has a public URL; otherwise reports
+     * via [onError] that the caller should open the landing page and import. */
     fun download(
         kind: ModelKind,
         scope: CoroutineScope,
         onProgress: (Float) -> Unit,
         onError: (String) -> Unit = {},
-    ): Job = scope.launch(Dispatchers.IO) {
-        runCatching {
-            val req = Request.Builder().url(kind.downloadUrl).build()
-            http.newCall(req).execute().use { resp ->
-                if (!resp.isSuccessful) error("HTTP ${resp.code}")
-                val total = resp.body?.contentLength()?.takeIf { it > 0 }
-                    ?: (kind.approxSizeMb * 1024L * 1024L)
-                val tmp = File(modelsDir, "${kind.filename}.part")
-                tmp.outputStream().use { out ->
-                    resp.body!!.byteStream().use { input ->
-                        val buf = ByteArray(64 * 1024)
-                        var read = 0L
-                        var lastReport = 0L
-                        while (true) {
-                            val n = input.read(buf)
-                            if (n <= 0) break
-                            out.write(buf, 0, n)
-                            read += n
-                            // Throttle UI callbacks — a 2 GB download produces ~32k ticks otherwise.
-                            if (read - lastReport >= 1_048_576) {
-                                lastReport = read
-                                withContext(Dispatchers.Main) {
-                                    onProgress((read.toFloat() / total).coerceIn(0f, 1f))
+    ): Job? {
+        val url = kind.downloadUrl ?: run {
+            onError("${kind.displayName} is gated. Tap \"Get model\" to open the download page, then \"Import file\" once you've downloaded it.")
+            return null
+        }
+        return scope.launch(Dispatchers.IO) {
+            runCatching {
+                val req = Request.Builder().url(url).build()
+                http.newCall(req).execute().use { resp ->
+                    if (!resp.isSuccessful) error("HTTP ${resp.code}")
+                    val total = resp.body?.contentLength()?.takeIf { it > 0 }
+                        ?: (kind.approxSizeMb * 1024L * 1024L)
+                    val tmp = File(modelsDir, "${kind.filename}.part")
+                    tmp.outputStream().use { out ->
+                        resp.body!!.byteStream().use { input ->
+                            val buf = ByteArray(64 * 1024)
+                            var read = 0L
+                            var lastReport = 0L
+                            while (true) {
+                                val n = input.read(buf)
+                                if (n <= 0) break
+                                out.write(buf, 0, n)
+                                read += n
+                                if (read - lastReport >= 1_048_576) {
+                                    lastReport = read
+                                    withContext(Dispatchers.Main) {
+                                        onProgress((read.toFloat() / total).coerceIn(0f, 1f))
+                                    }
                                 }
                             }
                         }
                     }
+                    tmp.renameTo(fileOf(kind))
                 }
-                tmp.renameTo(fileOf(kind))
+                withContext(Dispatchers.Main) { onProgress(1f) }
+            }.onFailure { err ->
+                Timber.e(err, "Download failed: ${kind.filename}")
+                withContext(Dispatchers.Main) { onError(err.message ?: err.javaClass.simpleName) }
             }
+        }
+    }
+
+    /**
+     * Copy a user-picked file into the app's models dir under [kind]'s canonical
+     * filename. Reports 0-1 progress and returns total bytes copied. Errors are
+     * surfaced via [onError].
+     */
+    fun importFrom(
+        kind: ModelKind,
+        uri: Uri,
+        scope: CoroutineScope,
+        onProgress: (Float) -> Unit,
+        onError: (String) -> Unit = {},
+    ): Job = scope.launch(Dispatchers.IO) {
+        runCatching {
+            val total = runCatching {
+                context.contentResolver.openFileDescriptor(uri, "r")?.use { it.statSize }
+            }.getOrNull()?.takeIf { it > 0 }
+                ?: (kind.approxSizeMb * 1024L * 1024L)
+
+            val tmp = File(modelsDir, "${kind.filename}.part")
+            val input = context.contentResolver.openInputStream(uri)
+                ?: error("Could not open picked file.")
+            input.use { ins ->
+                tmp.outputStream().use { out ->
+                    val buf = ByteArray(64 * 1024)
+                    var read = 0L
+                    var lastReport = 0L
+                    while (true) {
+                        val n = ins.read(buf)
+                        if (n <= 0) break
+                        out.write(buf, 0, n)
+                        read += n
+                        if (read - lastReport >= 1_048_576) {
+                            lastReport = read
+                            withContext(Dispatchers.Main) {
+                                onProgress((read.toFloat() / total).coerceIn(0f, 1f))
+                            }
+                        }
+                    }
+                }
+            }
+            tmp.renameTo(fileOf(kind))
             withContext(Dispatchers.Main) { onProgress(1f) }
         }.onFailure { err ->
-            Timber.e(err, "Download failed: ${kind.filename}")
+            Timber.e(err, "Import failed: ${kind.filename}")
             withContext(Dispatchers.Main) { onError(err.message ?: err.javaClass.simpleName) }
         }
     }
